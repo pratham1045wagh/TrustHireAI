@@ -4,6 +4,7 @@ import api from '../services/api';
 import { ResumeItem } from '../types';
 import { Badge } from '../components/common/Badge';
 import { LoadingState } from '../components/common/LoadingState';
+import { normalizeResumeData } from '../utils/normalize';
 import {
   FileText,
   User,
@@ -82,7 +83,7 @@ export const AnalysisPage: React.FC = () => {
   }
 
   const { personalInfo, summary, skills, education, experience, projects, certifications } =
-    resume.analysis;
+    normalizeResumeData(resume.analysis);
 
   return (
     <div className="space-y-8 pb-12">

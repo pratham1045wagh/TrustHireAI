@@ -133,6 +133,8 @@ export interface IVectorDocument {
   text: string;
   embedding: number[];
   contentHash?: string;
+  sourceType?: string;
+  skills?: string[];
   metadata?: Record<string, any>;
   createdAt?: Date;
 }
@@ -142,10 +144,13 @@ export type SkillProficiencyLevel = 'Beginner' | 'Intermediate' | 'Advanced' | '
 export type SkillVerificationStatus = 'CLAIMED' | 'EVIDENCE_FOUND' | 'PARTIALLY_SUPPORTED' | 'NEEDS_ASSESSMENT' | 'VERIFIED' | 'NEEDS_REVIEW';
 
 export interface ISkillEvidence {
-  sourceType: 'PROJECT' | 'EXPERIENCE' | 'CERTIFICATION' | 'SUMMARY' | 'EDUCATION';
+  sourceType: 'PROJECT' | 'EXPERIENCE' | 'WORK_EXPERIENCE' | 'CERTIFICATION' | 'SUMMARY' | 'EDUCATION' | 'SKILLS_ONLY';
   sourceTitle: string;
   snippet: string;
   relevanceScore: number;
+  semanticScore?: number;
+  keywordScore?: number;
+  sourceScore?: number;
 }
 
 export interface ISkillVerificationItem {
@@ -157,6 +162,13 @@ export interface ISkillVerificationItem {
   assessmentScore?: number;
   verificationLevel?: 'Strong' | 'Moderate' | 'Needs Review' | 'Unverified';
   notes?: string;
+  credRagScore?: number;
+  semanticScore?: number;
+  keywordScore?: number;
+  sourceScore?: number;
+  diversityScore?: number;
+  credibilityConfidence?: number;
+  explanation?: string;
 }
 
 export interface IVerificationScore {

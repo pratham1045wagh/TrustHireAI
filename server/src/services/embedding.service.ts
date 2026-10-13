@@ -3,6 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 
 export class EmbeddingService {
   private static EMBEDDING_DIMENSION = 768;
+  private static memoryCache = new Map<string, number[]>();
 
   private static getAiClient(): GoogleGenAI | null {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -16,7 +17,7 @@ export class EmbeddingService {
 
   /**
    * Generates a 768-dimensional normalized embedding vector for the given text.
-   * Uses Gemini text-embedding-004 with deterministic semantic fallback.
+   * Utilizes in-memory content-hash caching and robust deterministic fallback.
    */
   public static async generateEmbedding(text: string): Promise<number[]> {
     const cleanText = text.trim();
@@ -24,27 +25,88 @@ export class EmbeddingService {
       return new Array(this.EMBEDDING_DIMENSION).fill(0);
     }
 
+    const hash = this.computeHash(cleanText);
+
+    // 1. In-memory hash cache hit (0ms)
+    if (this.memoryCache.has(hash)) {
+      return this.memoryCache.get(hash)!;
+    }
+
+    // 2. Attempt remote Gemini embedding if available
     if (this.isGeminiEmbeddingAvailable) {
       try {
         const ai = this.getAiClient();
         if (ai) {
-          const response = await (ai.models as any).embedContent({
-            model: 'text-embedding-004',
+          const embedCall = (ai.models as any).embedContent({
+            model: 'gemini-embedding-001',
             contents: cleanText,
           });
 
-          if (response?.embedding?.values && Array.isArray(response.embedding.values)) {
-            return this.normalizeVector(response.embedding.values);
+          // Enforce 5-second timeout on embedding API call
+          const timeoutCall = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Embedding request timeout after 5000ms')), 5000)
+          );
+
+          const response: any = await Promise.race([embedCall, timeoutCall]);
+
+          const rawValues =
+            response?.embedding?.values ||
+            (Array.isArray(response?.embeddings) && response.embeddings[0]?.values) ||
+            null;
+
+          if (rawValues && Array.isArray(rawValues) && rawValues.length > 0) {
+            // Normalize or compress to standard 768-D vector if needed
+            let vec: number[];
+            if (rawValues.length === this.EMBEDDING_DIMENSION) {
+              vec = this.normalizeVector(rawValues);
+            } else if (rawValues.length > this.EMBEDDING_DIMENSION) {
+              // Standard dimension reduction via pooling
+              vec = new Array(this.EMBEDDING_DIMENSION).fill(0);
+              const stride = rawValues.length / this.EMBEDDING_DIMENSION;
+              for (let i = 0; i < this.EMBEDDING_DIMENSION; i++) {
+                const start = Math.floor(i * stride);
+                const end = Math.floor((i + 1) * stride);
+                let sum = 0;
+                for (let k = start; k < end; k++) {
+                  sum += rawValues[k] || 0;
+                }
+                vec[i] = sum / (end - start || 1);
+              }
+              vec = this.normalizeVector(vec);
+            } else {
+              vec = this.generateDeterministicEmbedding(cleanText);
+            }
+
+            this.memoryCache.set(hash, vec);
+            return vec;
           }
         }
       } catch (err: any) {
         this.isGeminiEmbeddingAvailable = false;
-        console.warn('[EmbeddingService Warning] Gemini embedding model unavailable, using deterministic 768-D semantic fallback.');
+        console.warn('[EmbeddingService Warning] Remote embedding unavailable/timed out, using deterministic 768-D semantic fallback.');
       }
     }
 
-    // High quality deterministic fallback based on word hashing and n-gram frequencies
-    return this.generateDeterministicEmbedding(cleanText);
+    // 3. High quality deterministic fallback based on word hashing and n-gram frequencies (768-D)
+    const fallbackVec = this.generateDeterministicEmbedding(cleanText);
+    this.memoryCache.set(hash, fallbackVec);
+    return fallbackVec;
+  }
+
+  /**
+   * Pre-populates the cache with existing vectors (e.g. from MongoDB VectorDocument collection)
+   */
+  public static cacheEmbedding(hash: string, vector: number[]): void {
+    if (hash && vector && vector.length > 0) {
+      this.memoryCache.set(hash, vector);
+    }
+  }
+
+  /**
+   * Checks if an embedding for this text hash is already cached
+   */
+  public static hasCachedEmbedding(hash: string): boolean {
+    return this.memoryCache.has(hash);
   }
 
   /**
@@ -62,7 +124,7 @@ export class EmbeddingService {
   /**
    * Generate reproducible semantic hash vector for offline / fallback robustness
    */
-  private static generateDeterministicEmbedding(text: string): number[] {
+  public static generateDeterministicEmbedding(text: string): number[] {
     const vec = new Array(this.EMBEDDING_DIMENSION).fill(0);
     const tokens = text.toLowerCase().match(/\b\w+\b/g) || [text];
 
@@ -97,6 +159,6 @@ export class EmbeddingService {
    * Compute a content hash for caching embeddings
    */
   public static computeHash(text: string): string {
-    return crypto.createHash('sha256').update(text).digest('hex');
+    return crypto.createHash('sha256').update(text.trim()).digest('hex');
   }
 }

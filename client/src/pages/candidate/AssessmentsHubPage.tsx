@@ -59,14 +59,38 @@ export const AssessmentsHubPage: React.FC = () => {
   const fetchAssessmentsData = async () => {
     try {
       setLoading(true);
-      const [resumeAssessRes, roomsRes, sessionsRes] = await Promise.all([
+      const [resumeAssessRes, resumesRes, roomsRes, sessionsRes] = await Promise.all([
         api.get('/assessments/my-resume-assessments').catch(() => ({ data: { success: false } })),
+        api.get('/resumes').catch(() => ({ data: { success: false } })),
         api.get('/assessment-rooms/available').catch(() => ({ data: { success: false } })),
         api.get('/assessment-sessions/my-sessions').catch(() => ({ data: { success: false } })),
       ]);
 
       const rList = resumeAssessRes.data?.resumeAssessments || [];
-      setResumeAssessments(rList);
+      const resumesList = resumesRes.data?.resumes || [];
+      const resumeMap: Record<string, any> = {};
+      for (const r of resumesList) {
+        resumeMap[String(r.id || r._id)] = r;
+      }
+
+      const mergedList = rList.map((item: any) => {
+        const rObj = resumeMap[String(item.resumeId)];
+        const isCompleted = item.assessmentStatus === 'COMPLETED' || !!item.completedSession || rObj?.assessmentStatus === 'COMPLETED';
+        return {
+          ...item,
+          isCompleted,
+          trustScore: isCompleted ? (item.trustScore ?? rObj?.trustScore ?? null) : null,
+          assessmentPerformanceScore: isCompleted
+            ? (item.assessmentPerformanceScore ?? item.assessmentScore ?? rObj?.assessmentPerformanceScore ?? (item.completedSession ? item.completedSession.percentage : null))
+            : null,
+          assessmentScore: isCompleted
+            ? (item.assessmentScore ?? item.assessmentPerformanceScore ?? rObj?.assessmentPerformanceScore ?? (item.completedSession ? item.completedSession.percentage : null))
+            : null,
+          assessmentStatus: isCompleted ? 'COMPLETED' : (item.activeSession || rObj?.assessmentStatus === 'IN_PROGRESS' ? 'IN_PROGRESS' : 'NOT_TAKEN'),
+        };
+      });
+
+      setResumeAssessments(mergedList);
 
       if (roomsRes.data?.success) {
         setAvailableRooms(roomsRes.data.rooms || []);
@@ -77,7 +101,7 @@ export const AssessmentsHubPage: React.FC = () => {
 
       // If navigated from [Take Assessment] on Resume/Analysis page, open Preparation UI automatically
       if (targetResumeId && shouldPrepare) {
-        const matched = rList.find((r: any) => String(r.resumeId) === String(targetResumeId));
+        const matched = mergedList.find((r: any) => String(r.resumeId) === String(targetResumeId));
         if (matched && matched.resumeStatus === 'ANALYZED') {
           handlePrepareResumeAssessment(matched);
         }
@@ -148,9 +172,7 @@ export const AssessmentsHubPage: React.FC = () => {
           );
         }
         // Refresh list in background
-        api.get('/assessments/my-resume-assessments').then((r) => {
-          if (r.data?.success) setResumeAssessments(r.data.resumeAssessments || []);
-        });
+        fetchAssessmentsData();
       } else {
         setPrepStatus('FAILED');
         setPrepMessage('We could not generate the assessment at this time.');
@@ -477,17 +499,25 @@ export const AssessmentsHubPage: React.FC = () => {
               const completed = item.completedSession;
               const active = item.activeSession;
               const assess = item.assessment;
+              const isCompleted = item.isCompleted ?? (item.assessmentStatus === 'COMPLETED' || !!completed);
+              const isInProgress = item.assessmentStatus === 'IN_PROGRESS' || !!active;
 
               let statusBadge = <Badge variant="default" size="sm">Not Taken</Badge>;
               if (!isAnalyzed) {
                 statusBadge = <Badge variant="danger" size="sm">Resume Not Parsed</Badge>;
-              } else if (completed) {
+              } else if (isCompleted) {
                 statusBadge = <Badge variant="success" size="sm">Completed</Badge>;
-              } else if (active) {
+              } else if (isInProgress) {
                 statusBadge = <Badge variant="warning" size="sm">In Progress</Badge>;
               } else if (assess?.generationStatus === 'READY' || assess?.generationStatus === 'FALLBACK_READY') {
                 statusBadge = <Badge variant="ai" size="sm">20 Questions Ready</Badge>;
               }
+
+              const displayAssessmentScore = isCompleted
+                ? `${item.assessmentScore ?? item.assessmentPerformanceScore ?? (completed ? completed.percentage : null) ?? 0}%`
+                : 'Not Taken';
+
+              const hasTrustScore = isCompleted && item.trustScore !== null && item.trustScore !== undefined;
 
               return (
                 <div
@@ -526,18 +556,22 @@ export const AssessmentsHubPage: React.FC = () => {
                       <div>
                         <span className="text-slate-400 block text-[11px]">Assessment Score</span>
                         <span className="font-mono font-black text-sm text-brand-700">
-                          {completed ? `${completed.percentage}%` : 'Not Taken'}
+                          {displayAssessmentScore}
                         </span>
                       </div>
                       <div>
                         <span className="text-slate-400 block text-[11px]">TrustScore</span>
-                        <span className="font-mono font-black text-sm text-ai-700">
-                          {item.trustScore !== null && item.trustScore !== undefined
-                            ? `${item.trustScore}%`
-                            : item.verificationScore !== null && item.verificationScore !== undefined
-                            ? `${item.verificationScore}%`
-                            : 'Not Available'}
-                        </span>
+                        {hasTrustScore ? (
+                          <span className="font-mono font-black text-sm text-ai-700">
+                            {item.trustScore}%
+                          </span>
+                        ) : (
+                          <div className="mt-0.5">
+                            <Badge variant="warning" size="sm">
+                              Assessment Required
+                            </Badge>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -552,7 +586,7 @@ export const AssessmentsHubPage: React.FC = () => {
 
                     {isAnalyzed && (
                       <div className="flex items-center gap-2">
-                        {completed ? (
+                        {isCompleted && completed ? (
                           <>
                             <button
                               onClick={() => handlePrepareResumeAssessment(item, true)}
@@ -569,7 +603,7 @@ export const AssessmentsHubPage: React.FC = () => {
                               <span>View Result</span>
                             </button>
                           </>
-                        ) : active ? (
+                        ) : isInProgress && active ? (
                           <button
                             onClick={() => navigate(`/candidate/assessment/${active.id}?type=RESUME_BASED`)}
                             className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5"

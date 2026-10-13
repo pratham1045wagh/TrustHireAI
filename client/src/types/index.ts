@@ -176,10 +176,13 @@ export type SkillProficiencyLevel = 'Beginner' | 'Intermediate' | 'Advanced' | '
 export type SkillVerificationStatus = 'CLAIMED' | 'EVIDENCE_FOUND' | 'PARTIALLY_SUPPORTED' | 'NEEDS_ASSESSMENT' | 'VERIFIED' | 'NEEDS_REVIEW';
 
 export interface ISkillEvidenceItem {
-  sourceType: 'PROJECT' | 'EXPERIENCE' | 'CERTIFICATION' | 'SUMMARY' | 'EDUCATION';
+  sourceType: 'PROJECT' | 'EXPERIENCE' | 'CERTIFICATION' | 'SUMMARY' | 'EDUCATION' | 'SKILLS_ONLY';
   sourceTitle: string;
   snippet: string;
   relevanceScore: number;
+  semanticScore?: number;
+  keywordScore?: number;
+  sourceScore?: number;
 }
 
 export interface ISkillEvidence {
@@ -194,6 +197,12 @@ export interface ISkillEvidence {
   assessmentScore?: number;
   verificationLevel?: 'Strong' | 'Moderate' | 'Needs Review' | 'Unverified';
   notes?: string;
+  credRagScore?: number;
+  semanticScore?: number;
+  keywordScore?: number;
+  sourceScore?: number;
+  diversityScore?: number;
+  explanation?: string;
 }
 
 export interface IVerificationReport {

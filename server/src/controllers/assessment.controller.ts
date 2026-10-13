@@ -309,11 +309,11 @@ export class AssessmentController {
         return;
       }
 
-      const [resumes, assessments, sessions, verificationReport] = await Promise.all([
+      const [resumes, assessments, sessions, verificationReports] = await Promise.all([
         Resume.find({ userId: candidateId }).sort({ createdAt: -1 }),
         Assessment.find({ candidateId, assessmentType: 'RESUME_BASED' }).sort({ createdAt: -1 }),
         AssessmentSession.find({ candidateId }).sort({ submittedAt: -1, createdAt: -1 }),
-        VerificationReport.findOne({ candidateId }),
+        VerificationReport.find({ candidateId }),
       ]);
 
       const items = resumes.map((r) => {
@@ -323,6 +323,7 @@ export class AssessmentController {
           (s) =>
             (s.status === 'SUBMITTED' || s.status === 'AUTO_SUBMITTED') &&
             (s.resumeId?.toString() === rid ||
+              (r.latestAssessmentSessionId && s._id.toString() === r.latestAssessmentSessionId.toString()) ||
               (assessment && s.assessmentId.toString() === assessment._id.toString()))
         );
         const activeSession = sessions.find(
@@ -331,6 +332,26 @@ export class AssessmentController {
             (s.resumeId?.toString() === rid ||
               (assessment && s.assessmentId.toString() === assessment._id.toString()))
         );
+
+        // Resume-specific VerificationReport matching this resumeId
+        const rReport = verificationReports.find((vr) => vr.resumeId?.toString() === rid);
+
+        // Resume-specific assessment completion state
+        const isCompleted = r.assessmentStatus === 'COMPLETED' || !!completedSession;
+        const resolvedAssessmentStatus = isCompleted
+          ? 'COMPLETED'
+          : activeSession
+          ? 'IN_PROGRESS'
+          : (r.assessmentStatus || 'NOT_TAKEN');
+
+        // Strictly resume-specific trustScore: only present if assessment is completed for this specific resume
+        const resumeTrustScore = isCompleted
+          ? (r.trustScore ?? rReport?.trustScore ?? null)
+          : null;
+
+        const assessmentScore = isCompleted
+          ? (r.assessmentPerformanceScore ?? (completedSession ? completedSession.percentage : (rReport?.assessmentScore ?? null)))
+          : null;
 
         const extractedSkills = r.analysis
           ? Array.from(
@@ -350,6 +371,12 @@ export class AssessmentController {
           resumeStatus: r.status,
           extractedSkills,
           createdAt: r.createdAt,
+          assessmentStatus: resolvedAssessmentStatus,
+          assessmentScore,
+          assessmentPerformanceScore: assessmentScore,
+          trustScore: resumeTrustScore,
+          resumeEvidenceScore: r.resumeEvidenceScore ?? rReport?.evidenceScore ?? null,
+          consistencyAlignmentScore: isCompleted ? (r.consistencyAlignmentScore ?? rReport?.consistencyScore ?? null) : null,
           assessment: assessment
             ? {
                 id: assessment._id,
@@ -383,13 +410,13 @@ export class AssessmentController {
                 expiresAt: activeSession.expiresAt,
               }
             : null,
-          verificationScore: verificationReport?.overallScore ?? null,
-          verificationBreakdown: verificationReport
+          verificationScore: resumeTrustScore,
+          verificationBreakdown: rReport
             ? {
-                overallScore: verificationReport.overallScore,
-                evidenceScore: verificationReport.evidenceScore,
-                assessmentScore: verificationReport.assessmentScore,
-                consistencyScore: verificationReport.consistencyScore,
+                overallScore: resumeTrustScore,
+                evidenceScore: rReport.evidenceScore,
+                assessmentScore: isCompleted ? rReport.assessmentScore : null,
+                consistencyScore: isCompleted ? rReport.consistencyScore : null,
               }
             : null,
         };
@@ -398,7 +425,7 @@ export class AssessmentController {
       res.status(200).json({
         success: true,
         resumeAssessments: items,
-        verificationReport,
+        verificationReport: verificationReports[0] || null,
       });
     } catch (error) {
       next(error);

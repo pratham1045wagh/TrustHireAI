@@ -57,6 +57,17 @@ const VectorDocumentSchema = new Schema<IVectorDocumentDoc>(
       type: String,
       index: true,
     },
+    skills: {
+      type: [String],
+      default: [],
+      index: true,
+    },
+    sourceType: {
+      type: String,
+      enum: ['PROJECT', 'EXPERIENCE', 'WORK_EXPERIENCE', 'CERTIFICATION', 'EDUCATION', 'SUMMARY', 'SKILLS_ONLY', 'JOB_REQUIREMENT', 'OTHER'],
+      default: 'OTHER',
+      index: true,
+    },
     text: {
       type: String,
       required: true,

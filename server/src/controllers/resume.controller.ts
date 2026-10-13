@@ -11,6 +11,7 @@ import { SkillEvidence } from '../models/SkillEvidence';
 import { VerificationReport } from '../models/VerificationReport';
 import { AssessmentSession } from '../models/AssessmentSession';
 import { AuditService } from '../services/audit.service';
+import { normalizeResumeData } from '../utils/normalize';
 
 export class ResumeController {
   public static async uploadResume(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -46,9 +47,11 @@ export class ResumeController {
       status: 'PARSING',
     });
 
+    const tTotalStart = Date.now();
     try {
       // Step 1: Extract Text from PDF / DOCX
       let extractedText: string;
+      const tTextStart = Date.now();
       try {
         console.log(`[ResumeUpload] parsing document with DocumentService...`);
         extractedText = await DocumentService.extractText(file.path, file.originalname);
@@ -66,6 +69,8 @@ export class ResumeController {
         });
         return;
       }
+      const tTextEnd = Date.now();
+      console.log(`[ResumeProcessing] Text extraction: ${tTextEnd - tTextStart}ms`);
 
       resumeDoc.extractedText = extractedText;
       resumeDoc.status = 'ANALYZING';
@@ -73,6 +78,7 @@ export class ResumeController {
 
       // Step 2: Gemini AI Structured Extraction
       let analysisResult;
+      const tAiStart = Date.now();
       try {
         console.log(`[ResumeUpload] Gemini analysis started...`);
         analysisResult = await GeminiService.analyzeResume(extractedText);
@@ -91,24 +97,45 @@ export class ResumeController {
         });
         return;
       }
+      const tAiEnd = Date.now();
+      console.log(`[ResumeProcessing] Gemini extraction: ${tAiEnd - tAiStart}ms`);
 
       // Step 3: Save analysis results
-      resumeDoc.status = 'ANALYZED';
-      resumeDoc.analysis = analysisResult;
+      const tDbStart = Date.now();
+      const normalizedAnalysis = normalizeResumeData(analysisResult);
+      resumeDoc.status = 'INDEXING';
+      resumeDoc.analysis = normalizedAnalysis;
       await resumeDoc.save();
-      console.log(`[ResumeUpload] database saved resumeId=${resumeDoc._id}`);
+      const tDbEnd = Date.now();
+      console.log(`[ResumeProcessing] Database persistence: ${tDbEnd - tDbStart}ms`);
 
-      // Step 4: Index into Vector Database (RAG Pipeline)
+      // Step 4: Index into Vector Database (CredRAG Pipeline)
+      const tRagStart = Date.now();
       try {
-        console.log(`[ResumeUpload] generating vector embeddings and evidence mapping...`);
-        await RAGService.indexResume(resumeDoc._id.toString(), userId, analysisResult);
-        await VerificationService.generateSkillEvidenceMap(userId, resumeDoc._id.toString(), analysisResult);
-        console.log(`[ResumeUpload] vector indexed and evidence mapped successfully`);
+        console.log(`[ResumeUpload] generating vector embeddings and indexing...`);
+        await RAGService.indexResume(resumeDoc._id.toString(), userId, normalizedAnalysis);
       } catch (ragErr: any) {
-        console.warn('[ResumeUpload] Non-fatal RAG/evidence mapping warning:', ragErr?.message || ragErr);
+        console.warn('[ResumeUpload] Non-fatal RAG indexing warning:', ragErr?.message || ragErr);
       }
+      const tRagEnd = Date.now();
+      console.log(`[CredRAG] MongoDB indexing: ${tRagEnd - tRagStart}ms`);
 
-      // Step 5: Audit Log
+      // Step 5: CredRAG Evidence Mapping & Score Generation
+      const tEvidenceStart = Date.now();
+      try {
+        console.log(`[ResumeUpload] generating CredRAG skill evidence map...`);
+        await VerificationService.generateSkillEvidenceMap(userId, resumeDoc._id.toString(), normalizedAnalysis, { fastMode: true });
+        console.log(`[ResumeUpload] vector indexed and evidence mapped successfully`);
+      } catch (evErr: any) {
+        console.warn('[ResumeUpload] Non-fatal evidence mapping warning:', evErr?.message || evErr);
+      }
+      const tEvidenceEnd = Date.now();
+      console.log(`[CredRAG] Evidence verification: ${tEvidenceEnd - tEvidenceStart}ms`);
+
+      resumeDoc.status = 'ANALYZED';
+      await resumeDoc.save();
+
+      // Step 6: Audit Log
       await AuditService.log({
         userId,
         userEmail: req.user?.email,
@@ -119,6 +146,8 @@ export class ResumeController {
         metadata: { fileName: file.originalname, size: file.size },
       });
 
+      const totalTime = Date.now() - tTotalStart;
+      console.log(`[ResumeProcessing] TOTAL: ${totalTime}ms`);
       console.log(`[ResumeUpload] completed successfully for resumeId=${resumeDoc._id}`);
 
       res.status(201).json({
@@ -179,15 +208,25 @@ export class ResumeController {
       resumeDoc.status = 'ANALYZING';
       await resumeDoc.save();
 
-      const analysisResult = await GeminiService.analyzeResume(text);
+      const tRetryStart = Date.now();
+      const rawAnalysis = await GeminiService.analyzeResume(text);
+      const analysisResult = normalizeResumeData(rawAnalysis);
+
       resumeDoc.status = 'ANALYZED';
       resumeDoc.analysis = analysisResult;
       resumeDoc.errorMessage = undefined;
       await resumeDoc.save();
 
       try {
+        console.log(`[ResumeRetry] CredRAG indexing started...`);
+        const tIndex = Date.now();
         await RAGService.indexResume(resumeDoc._id.toString(), resumeDoc.userId.toString(), analysisResult);
-        await VerificationService.generateSkillEvidenceMap(resumeDoc.userId.toString(), resumeDoc._id.toString(), analysisResult);
+        console.log(`[CredRAG] MongoDB indexing: ${Date.now() - tIndex}ms`);
+
+        const tEv = Date.now();
+        await VerificationService.generateSkillEvidenceMap(resumeDoc.userId.toString(), resumeDoc._id.toString(), analysisResult, { fastMode: true });
+        console.log(`[CredRAG] Evidence verification: ${Date.now() - tEv}ms`);
+        console.log(`[ResumeRetry] TOTAL: ${Date.now() - tRetryStart}ms`);
       } catch (ragErr: any) {
         console.warn('[ResumeRetry] Non-fatal RAG warning:', ragErr?.message || ragErr);
       }

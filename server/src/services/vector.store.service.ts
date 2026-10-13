@@ -10,6 +10,7 @@ export interface IVectorSearchResult {
 export interface IVectorStoreFilter {
   documentType?: 'resume' | 'job' | 'skill';
   userId?: string;
+  userIds?: string[];
   resumeId?: string;
   jobId?: string;
   section?: string;
@@ -36,6 +37,30 @@ export class VectorStoreService {
   }
 
   /**
+   * Idempotently upsert a single chunk by chunkId and resumeId/jobId
+   */
+  public static async upsertChunk(chunk: Partial<IVectorDocument>): Promise<any> {
+    if (!chunk.chunkId) return null;
+    return VectorDocument.findOneAndUpdate(
+      { chunkId: chunk.chunkId },
+      { $set: chunk },
+      { upsert: true, new: true }
+    );
+  }
+
+  /**
+   * Delete stale chunks for a resume that are no longer in the active chunk list
+   */
+  public static async deleteStaleChunks(resumeId: string, currentChunkIds: string[]): Promise<number> {
+    if (!resumeId || currentChunkIds.length === 0) return 0;
+    const res = await VectorDocument.deleteMany({
+      resumeId,
+      chunkId: { $nin: currentChunkIds },
+    });
+    return res.deletedCount || 0;
+  }
+
+  /**
    * Query vector database using cosine similarity and metadata filtering
    */
   public static async similaritySearch(
@@ -45,7 +70,11 @@ export class VectorStoreService {
   ): Promise<IVectorSearchResult[]> {
     const query: any = {};
     if (filter.documentType) query.documentType = filter.documentType;
-    if (filter.userId) query.userId = filter.userId;
+    if (filter.userIds && Array.isArray(filter.userIds)) {
+      query.userId = { $in: filter.userIds };
+    } else if (filter.userId) {
+      query.userId = filter.userId;
+    }
     if (filter.resumeId) query.resumeId = filter.resumeId;
     if (filter.jobId) query.jobId = filter.jobId;
     if (filter.section) query.section = filter.section;

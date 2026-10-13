@@ -6,6 +6,7 @@ import { AssessmentSession } from '../models/AssessmentSession';
 import { VerificationService } from '../services/verification.service';
 import { Resume } from '../models/Resume';
 import { User } from '../models/User';
+import { CredRAGEvaluator, getCredRAGConfig } from '../rag';
 
 function formatSessionBreakdown(latestSession: any) {
   if (!latestSession) return null;
@@ -280,6 +281,51 @@ export class VerificationController {
         success: true,
         selectedResumeId: resumeId,
         skills,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Run CredRAG empirical ablation benchmark on a specific resume (Requirements 31 & 32)
+   */
+  public static async runCredRAGBenchmark(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { resumeId } = req.params;
+      const candidateId = req.user?.id;
+      if (!candidateId) {
+        res.status(401).json({ success: false, message: 'Authentication required' });
+        return;
+      }
+
+      const resume = await Resume.findById(resumeId);
+      if (!resume) {
+        res.status(404).json({ success: false, message: 'Resume document not found.' });
+        return;
+      }
+
+      const targetCandidateId = resume.userId.toString();
+      const report = await CredRAGEvaluator.runBenchmark(targetCandidateId, resumeId);
+
+      res.status(200).json({
+        success: true,
+        message: 'CredRAG empirical ablation benchmark completed across 6 experimental modes.',
+        report,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get active CredRAG configuration hyperparameters and ablation flags
+   */
+  public static async getCredRAGConfig(_req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      res.status(200).json({
+        success: true,
+        config: getCredRAGConfig(),
       });
     } catch (error) {
       next(error);

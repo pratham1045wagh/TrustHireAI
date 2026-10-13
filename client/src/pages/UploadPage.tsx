@@ -199,10 +199,14 @@ export const UploadPage: React.FC = () => {
       });
 
       if (response.data.success && response.data.resume?.id) {
-        setAiStages((prev) => prev.map((s) => ({ ...s, status: 'completed' })));
+        setAiStages((prev) => [
+          ...prev.slice(0, 5).map((s) => ({ ...s, status: 'completed' as const })),
+          { label: 'Vector embeddings & CredRAG indexing completed', status: 'completed' as const },
+          { label: 'Resume processing completed', status: 'completed' as const },
+        ]);
         setTimeout(() => {
           navigate(`/analysis/${response.data.resume.id}`);
-        }, 800);
+        }, 900);
       }
     } catch (err: any) {
       setIsUploading(false);
@@ -222,7 +226,7 @@ export const UploadPage: React.FC = () => {
       } else if (data?.errorCode === 'UNAUTHENTICATED') {
         setError("Your session has expired. Please sign in again.");
       } else {
-        setError(data?.message || err.message || 'Something went wrong while processing your resume. Please try again.');
+        setError(data?.message || err.message || 'Resume processing failed. Please try again.');
       }
     }
   };
@@ -258,27 +262,37 @@ export const UploadPage: React.FC = () => {
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-bold block">Upload Error</span>
+                  <span className="font-bold block">Resume processing failed</span>
                   <span>{error}</span>
                 </div>
               </div>
-              {failedResumeId && (
-                <button
-                  type="button"
-                  onClick={handleRetry}
-                  disabled={isRetrying}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold shrink-0 shadow-sm flex items-center gap-1.5 transition-all"
-                >
-                  {isRetrying ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      Retrying...
-                    </>
-                  ) : (
-                    'Retry Analysis'
-                  )}
-                </button>
-              )}
+              <div className="flex items-center gap-2 shrink-0">
+                {failedResumeId ? (
+                  <button
+                    type="button"
+                    onClick={handleRetry}
+                    disabled={isRetrying}
+                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold shadow-sm flex items-center gap-1.5 transition-all text-xs"
+                  >
+                    {isRetrying ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Retrying...
+                      </>
+                    ) : (
+                      'Retry Analysis'
+                    )}
+                  </button>
+                ) : selectedFile ? (
+                  <button
+                    type="button"
+                    onClick={handleUploadSubmit}
+                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold shadow-sm flex items-center gap-1.5 transition-all text-xs"
+                  >
+                    Retry Upload
+                  </button>
+                ) : null}
+              </div>
             </div>
           )}
 

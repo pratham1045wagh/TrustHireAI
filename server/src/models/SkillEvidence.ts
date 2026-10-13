@@ -12,6 +12,12 @@ export interface ISkillEvidenceDocument extends Document {
   assessmentScore?: number;
   verificationLevel?: 'Strong' | 'Moderate' | 'Needs Review' | 'Unverified';
   notes?: string;
+  credRagScore?: number;
+  semanticScore?: number;
+  keywordScore?: number;
+  sourceScore?: number;
+  diversityScore?: number;
+  explanation?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,12 +26,15 @@ const SkillEvidenceItemSchema = new Schema(
   {
     sourceType: {
       type: String,
-      enum: ['PROJECT', 'EXPERIENCE', 'CERTIFICATION', 'SUMMARY', 'EDUCATION'],
+      enum: ['PROJECT', 'EXPERIENCE', 'WORK_EXPERIENCE', 'CERTIFICATION', 'SUMMARY', 'EDUCATION', 'SKILLS_ONLY'],
       required: true,
     },
     sourceTitle: { type: String, required: true },
     snippet: { type: String, required: true },
     relevanceScore: { type: Number, default: 80 },
+    semanticScore: { type: Number },
+    keywordScore: { type: Number },
+    sourceScore: { type: Number },
   },
   { _id: false }
 );
@@ -89,6 +98,35 @@ const SkillEvidenceSchema = new Schema<ISkillEvidenceDocument>(
       default: 'Unverified',
     },
     notes: {
+      type: String,
+      default: '',
+    },
+    credRagScore: {
+      type: Number,
+      min: 0,
+      max: 100,
+    },
+    semanticScore: {
+      type: Number,
+      min: 0,
+      max: 100,
+    },
+    keywordScore: {
+      type: Number,
+      min: 0,
+      max: 100,
+    },
+    sourceScore: {
+      type: Number,
+      min: 0,
+      max: 100,
+    },
+    diversityScore: {
+      type: Number,
+      min: 0,
+      max: 100,
+    },
+    explanation: {
       type: String,
       default: '',
     },

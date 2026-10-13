@@ -5,6 +5,7 @@ import { Resume } from '../models/Resume';
 import { Job, IJob } from '../models/Job';
 import { User } from '../models/User';
 import { Application } from '../models/Application';
+import { CredRAG } from '../rag/cred_rag';
 
 export interface ISemanticCandidateMatch {
   candidateId: string;
@@ -20,178 +21,14 @@ export interface ISemanticCandidateMatch {
 
 export class RAGService {
   /**
-   * Chunks and indexes a candidate resume into the vector database
+   * Chunks and indexes a candidate resume into the vector database using CredRAG skill-aware chunking
    */
   public static async indexResume(
     resumeId: string,
     userId: string,
     analysis: IResumeAnalysis
   ): Promise<number> {
-    // Clean existing chunks for this resume to prevent stale duplicates
-    await VectorStoreService.deleteByDocumentId(resumeId);
-
-    const chunks: Partial<IVectorDocument>[] = [];
-
-    // 1. Summary Chunk
-    if (analysis.summary && analysis.summary.trim().length > 10) {
-      const text = `Summary: ${analysis.summary.trim()}`;
-      const embedding = await EmbeddingService.generateEmbedding(text);
-      chunks.push({
-        documentId: resumeId,
-        resumeId,
-        userId,
-        chunkId: `${resumeId}-summary`,
-        documentType: 'resume',
-        section: 'summary',
-        text,
-        embedding,
-        contentHash: EmbeddingService.computeHash(text),
-        metadata: { fullName: analysis.personalInfo?.fullName },
-      });
-    }
-
-    // 2. Skills Chunk & Individual Skill Chunks
-    const allSkills = [
-      ...(analysis.skills?.programmingLanguages || []),
-      ...(analysis.skills?.frameworks || []),
-      ...(analysis.skills?.libraries || []),
-      ...(analysis.skills?.databases || []),
-      ...(analysis.skills?.tools || []),
-      ...(analysis.skills?.cloud || []),
-      ...(analysis.skills?.other || []),
-    ];
-
-    if (allSkills.length > 0) {
-      const skillsText = `Skills & Technologies: ${allSkills.join(', ')}`;
-      const embedding = await EmbeddingService.generateEmbedding(skillsText);
-      chunks.push({
-        documentId: resumeId,
-        resumeId,
-        userId,
-        chunkId: `${resumeId}-skills-all`,
-        documentType: 'resume',
-        section: 'skills',
-        text: skillsText,
-        embedding,
-        contentHash: EmbeddingService.computeHash(skillsText),
-      });
-
-      // Index key individual skills for direct evidence matching
-      for (const skill of allSkills.slice(0, 20)) {
-        const text = `Skill: ${skill}`;
-        const emb = await EmbeddingService.generateEmbedding(text);
-        chunks.push({
-          documentId: resumeId,
-          resumeId,
-          userId,
-          chunkId: `${resumeId}-skill-${skill.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
-          documentType: 'skill',
-          section: 'skills',
-          skill,
-          text,
-          embedding: emb,
-          contentHash: EmbeddingService.computeHash(text),
-        });
-      }
-    }
-
-    // 3. Experience Chunks
-    if (analysis.experience && analysis.experience.length > 0) {
-      for (let i = 0; i < analysis.experience.length; i++) {
-        const exp = analysis.experience[i];
-        const bullets = (exp.description || []).join(' ');
-        const text = `Experience at ${exp.company || 'Company'} as ${exp.role || 'Role'} (${exp.startDate || ''} - ${exp.endDate || ''}): ${bullets}`;
-        if (text.length > 20) {
-          const embedding = await EmbeddingService.generateEmbedding(text);
-          chunks.push({
-            documentId: resumeId,
-            resumeId,
-            userId,
-            chunkId: `${resumeId}-exp-${i}`,
-            documentType: 'resume',
-            section: 'experience',
-            text,
-            embedding,
-            contentHash: EmbeddingService.computeHash(text),
-            metadata: { company: exp.company, role: exp.role },
-          });
-        }
-      }
-    }
-
-    // 4. Projects Chunks
-    if (analysis.projects && analysis.projects.length > 0) {
-      for (let i = 0; i < analysis.projects.length; i++) {
-        const proj = analysis.projects[i];
-        const techs = (proj.technologies || []).join(', ');
-        const text = `Project: ${proj.name || 'Untitled Project'} (${proj.role || 'Contributor'}). Technologies: ${techs}. Description: ${proj.description || ''}`;
-        if (text.length > 20) {
-          const embedding = await EmbeddingService.generateEmbedding(text);
-          chunks.push({
-            documentId: resumeId,
-            resumeId,
-            userId,
-            chunkId: `${resumeId}-proj-${i}`,
-            documentType: 'resume',
-            section: 'projects',
-            text,
-            embedding,
-            contentHash: EmbeddingService.computeHash(text),
-            metadata: { projectName: proj.name, technologies: proj.technologies },
-          });
-        }
-      }
-    }
-
-    // 5. Education Chunks
-    if (analysis.education && analysis.education.length > 0) {
-      for (let i = 0; i < analysis.education.length; i++) {
-        const edu = analysis.education[i];
-        const text = `Education: ${edu.degree || 'Degree'} in ${edu.field || 'Field'} from ${edu.institution || 'Institution'} (${edu.startYear || ''} - ${edu.endYear || ''})`;
-        if (text.length > 15) {
-          const embedding = await EmbeddingService.generateEmbedding(text);
-          chunks.push({
-            documentId: resumeId,
-            resumeId,
-            userId,
-            chunkId: `${resumeId}-edu-${i}`,
-            documentType: 'resume',
-            section: 'education',
-            text,
-            embedding,
-            contentHash: EmbeddingService.computeHash(text),
-          });
-        }
-      }
-    }
-
-    // 6. Certifications Chunks
-    if (analysis.certifications && analysis.certifications.length > 0) {
-      for (let i = 0; i < analysis.certifications.length; i++) {
-        const cert = analysis.certifications[i];
-        const text = `Certification: ${cert.name || 'Certification'} issued by ${cert.issuer || 'Issuer'} (${cert.date || ''})`;
-        if (text.length > 15) {
-          const embedding = await EmbeddingService.generateEmbedding(text);
-          chunks.push({
-            documentId: resumeId,
-            resumeId,
-            userId,
-            chunkId: `${resumeId}-cert-${i}`,
-            documentType: 'resume',
-            section: 'certifications',
-            text,
-            embedding,
-            contentHash: EmbeddingService.computeHash(text),
-          });
-        }
-      }
-    }
-
-    if (chunks.length > 0) {
-      await VectorStoreService.insertDocuments(chunks);
-    }
-
-    return chunks.length;
+    return CredRAG.indexResume(resumeId, userId, analysis);
   }
 
   /**
@@ -259,37 +96,15 @@ export class RAGService {
   }
 
   /**
-   * Search resume chunks to locate concrete evidence for a specific skill
+   * Search resume chunks to locate concrete evidence for a specific skill using CredRAG
    */
   public static async searchResumeEvidence(
     candidateId: string,
     skill: string,
-    topK: number = 4
+    topK: number = 4,
+    resumeId?: string
   ): Promise<{ text: string; section: DocumentSection; similarity: number; metadata?: any }[]> {
-    const query = `Skill ${skill} hands-on implementation, project work, technical experience and architecture`;
-    const queryEmbedding = await EmbeddingService.generateEmbedding(query);
-
-    const results = await VectorStoreService.similaritySearch(
-      queryEmbedding,
-      {
-        userId: candidateId,
-        documentType: 'resume',
-      },
-      topK * 2
-    );
-
-    // Filter to sections that hold evidence (projects, experience, certifications, summary)
-    const validSections: DocumentSection[] = ['projects', 'experience', 'certifications', 'summary', 'education'];
-    const filtered = results
-      .filter((r) => validSections.includes(r.document.section))
-      .slice(0, topK);
-
-    return filtered.map((r) => ({
-      text: r.document.text,
-      section: r.document.section,
-      similarity: Number((r.similarity * 100).toFixed(1)),
-      metadata: r.document.metadata,
-    }));
+    return CredRAG.retrieveEvidence(candidateId, skill, topK, resumeId);
   }
 
   /**
@@ -305,16 +120,29 @@ export class RAGService {
     const jdQuery = `${job.title} ${job.requiredSkills.join(' ')} ${job.description}`;
     const jdEmbedding = await EmbeddingService.generateEmbedding(jdQuery);
 
-    // Find all candidate resumes
-    const candidateResumes = await Resume.find({ status: 'ANALYZED' })
-      .populate('userId', 'name email')
+    // Find all candidate resumes belonging strictly to eligible candidates (role: CANDIDATE)
+    const candidateUsers = await User.find({
+      role: 'CANDIDATE',
+      isActive: { $ne: false },
+    }).select('_id');
+    const candidateUserIds = candidateUsers.map((u) => u._id.toString());
+
+    if (candidateUserIds.length === 0) {
+      return [];
+    }
+
+    const candidateResumes = await Resume.find({
+      status: 'ANALYZED',
+      userId: { $in: candidateUserIds },
+    })
+      .populate('userId', 'name email role')
       .lean();
 
     const matches: ISemanticCandidateMatch[] = [];
 
     for (const resDoc of candidateResumes) {
       const user = resDoc.userId as any;
-      if (!user?._id) continue;
+      if (!user?._id || user.role !== 'CANDIDATE') continue;
 
       const candidateId = user._id.toString();
 
@@ -386,26 +214,48 @@ export class RAGService {
 
   /**
    * Recruiter semantic query search (e.g. "Find candidates with strong React and Node.js experience")
+   * Strictly returns eligible candidate profiles (role: CANDIDATE), excluding recruiter accounts.
    */
   public static async semanticSearchCandidates(
     queryText: string,
     topK: number = 10
   ): Promise<ISemanticCandidateMatch[]> {
-    const queryEmbedding = await EmbeddingService.generateEmbedding(queryText);
+    // 1. Fetch eligible candidates (strictly role: CANDIDATE, excluding RECRUITER and ADMIN)
+    const candidateUsers = await User.find({
+      role: 'CANDIDATE',
+      isActive: { $ne: false },
+    })
+      .select('_id name email role')
+      .lean();
 
-    // Retrieve matching resume chunks
-    const chunkMatches = await VectorStoreService.similaritySearch(
-      queryEmbedding,
-      { documentType: 'resume' },
-      topK * 4
+    if (!candidateUsers || candidateUsers.length === 0) {
+      return [];
+    }
+
+    const candidateUserIds = candidateUsers.map((u) => u._id.toString());
+    const candidateUserMap = new Map<string, any>(
+      candidateUsers.map((u) => [u._id.toString(), u])
     );
 
-    // Group by userId
+    const queryEmbedding = await EmbeddingService.generateEmbedding(queryText);
+
+    // 2. Retrieve matching resume chunks strictly for candidate users at vector retrieval level
+    // Request sufficient chunks to guarantee topK candidate diversity
+    const chunkMatches = await VectorStoreService.similaritySearch(
+      queryEmbedding,
+      {
+        documentType: 'resume',
+        userIds: candidateUserIds,
+      },
+      Math.max(topK * 6, 40)
+    );
+
+    // 3. Group by candidate userId
     const candidateMap = new Map<string, { topScore: number; chunks: any[] }>();
 
     for (const match of chunkMatches) {
       const uId = match.document.userId;
-      if (!uId) continue;
+      if (!uId || !candidateUserMap.has(uId)) continue;
 
       if (!candidateMap.has(uId)) {
         candidateMap.set(uId, {
@@ -423,8 +273,8 @@ export class RAGService {
     const results: ISemanticCandidateMatch[] = [];
 
     for (const [candidateId, data] of candidateMap.entries()) {
-      const user = await User.findById(candidateId).select('name email');
-      if (!user) continue;
+      const user = candidateUserMap.get(candidateId);
+      if (!user || user.role !== 'CANDIDATE') continue;
 
       const resume = await Resume.findOne({ userId: candidateId, status: 'ANALYZED' }).sort({ createdAt: -1 });
 
@@ -432,8 +282,8 @@ export class RAGService {
 
       results.push({
         candidateId,
-        candidateName: user.name,
-        candidateEmail: user.email,
+        candidateName: user.name || 'Candidate',
+        candidateEmail: user.email || '',
         resumeId: resume?._id?.toString() || '',
         overallScore: Math.min(100, Math.max(20, score)),
         semanticSimilarity: score,

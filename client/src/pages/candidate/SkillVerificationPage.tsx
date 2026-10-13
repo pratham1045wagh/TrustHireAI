@@ -268,8 +268,11 @@ export const SkillVerificationPage: React.FC = () => {
                   </Badge>
                 </div>
 
-                <div className="flex items-center gap-3 text-xs text-slate-500 mb-4">
-                  <span>Confidence: <strong className="text-slate-800">{item.confidence}%</strong></span>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 mb-3">
+                  <span>
+                    CredRAG Confidence:{' '}
+                    <strong className="text-slate-900 font-extrabold">{item.credRagScore || item.confidence}%</strong>
+                  </span>
                   <span>•</span>
                   <span>
                     Status:{' '}
@@ -282,6 +285,28 @@ export const SkillVerificationPage: React.FC = () => {
                     </strong>
                   </span>
                 </div>
+
+                {/* CredRAG Multi-Signal Retrieval Breakdown */}
+                {(item.semanticScore !== undefined || item.diversityScore !== undefined) && (
+                  <div className="grid grid-cols-4 gap-1.5 p-2 rounded-xl bg-slate-50 border border-slate-100 text-[10px] text-center mb-3">
+                    <div>
+                      <span className="block text-slate-400 font-medium">Semantic</span>
+                      <strong className="text-slate-800 font-mono">{item.semanticScore ?? 0}%</strong>
+                    </div>
+                    <div>
+                      <span className="block text-slate-400 font-medium">Keyword</span>
+                      <strong className="text-slate-800 font-mono">{item.keywordScore ?? 0}%</strong>
+                    </div>
+                    <div>
+                      <span className="block text-slate-400 font-medium">Source</span>
+                      <strong className="text-slate-800 font-mono">{item.sourceScore ?? 0}%</strong>
+                    </div>
+                    <div>
+                      <span className="block text-slate-400 font-medium">Diversity</span>
+                      <strong className="text-slate-800 font-mono">{item.diversityScore ?? 0}%</strong>
+                    </div>
+                  </div>
+                )}
 
                 {/* Evidence items */}
                 <div className="space-y-2">

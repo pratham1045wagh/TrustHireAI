@@ -5,148 +5,24 @@ import { VerificationReport, IVerificationReportDocument } from '../models/Verif
 import { AssessmentSession } from '../models/AssessmentSession';
 import { IResumeAnalysis, ISkillEvidence, SkillProficiencyLevel, SkillVerificationStatus } from '../types';
 import { RAGService } from './rag.service';
+import { CredRAG } from '../rag/cred_rag';
 
 export class VerificationService {
   /**
-   * Generates skill evidence mapping for all extracted resume skills (strictly resume-isolated)
+   * Generates skill evidence mapping for all extracted resume skills using CredRAG (strictly resume-isolated)
    */
   public static async generateSkillEvidenceMap(
     candidateId: string,
     resumeId: string,
-    analysis: IResumeAnalysis
+    analysis: IResumeAnalysis,
+    options: { fastMode?: boolean } = { fastMode: true }
   ): Promise<ISkillEvidenceDocument[]> {
     if (!candidateId || !resumeId) return [];
 
-    // Collect all skills from this resume
-    const allSkills = Array.from(
-      new Set([
-        ...(analysis.skills?.programmingLanguages || []),
-        ...(analysis.skills?.frameworks || []),
-        ...(analysis.skills?.libraries || []),
-        ...(analysis.skills?.databases || []),
-        ...(analysis.skills?.tools || []),
-        ...(analysis.skills?.cloud || []),
-        ...(analysis.skills?.other || []),
-      ])
-    ).filter(Boolean);
+    // Verify candidate resume skills through the CredRAG pipeline
+    const savedItems = await CredRAG.verifyAllResumeSkills(candidateId, resumeId, analysis, options);
 
-    const savedItems: ISkillEvidenceDocument[] = [];
-
-    for (const skill of allSkills) {
-      const evidenceList: ISkillEvidence[] = [];
-
-      // Check projects in this resume
-      if (analysis.projects) {
-        for (const proj of analysis.projects) {
-          const inTechs = (proj.technologies || []).some((t) =>
-            t.toLowerCase().includes(skill.toLowerCase()) || skill.toLowerCase().includes(t.toLowerCase())
-          );
-          const inDesc = (proj.description || '').toLowerCase().includes(skill.toLowerCase());
-
-          if (inTechs || inDesc) {
-            evidenceList.push({
-              sourceType: 'PROJECT',
-              sourceTitle: proj.name || 'Project',
-              snippet: `${proj.role || 'Contributor'}: ${proj.description || ''}`,
-              relevanceScore: inTechs ? 90 : 80,
-            });
-          }
-        }
-      }
-
-      // Check experience in this resume
-      if (analysis.experience) {
-        for (const exp of analysis.experience) {
-          const inDesc = (exp.description || []).some((d) =>
-            d.toLowerCase().includes(skill.toLowerCase())
-          );
-          if (inDesc) {
-            evidenceList.push({
-              sourceType: 'EXPERIENCE',
-              sourceTitle: `${exp.role || 'Role'} at ${exp.company || 'Company'}`,
-              snippet: (exp.description || []).join(' '),
-              relevanceScore: 85,
-            });
-          }
-        }
-      }
-
-      // Check certifications in this resume
-      if (analysis.certifications) {
-        for (const cert of analysis.certifications) {
-          if ((cert.name || '').toLowerCase().includes(skill.toLowerCase())) {
-            evidenceList.push({
-              sourceType: 'CERTIFICATION',
-              sourceTitle: cert.name || 'Certification',
-              snippet: `Issued by ${cert.issuer || 'Issuer'} (${cert.date || ''})`,
-              relevanceScore: 95,
-            });
-          }
-        }
-      }
-
-      // Inquire vector DB for semantic evidence if direct text match is empty
-      if (evidenceList.length === 0) {
-        try {
-          const ragEvidence = await RAGService.searchResumeEvidence(candidateId, skill, 2);
-          for (const r of ragEvidence) {
-            if (r.similarity > 70) {
-              evidenceList.push({
-                sourceType: r.section === 'projects' ? 'PROJECT' : 'EXPERIENCE',
-                sourceTitle: `Resume ${r.section}`,
-                snippet: r.text.slice(0, 150),
-                relevanceScore: Math.round(r.similarity),
-              });
-            }
-          }
-        } catch {
-          // ignore RAG search errors
-        }
-      }
-
-      // Determine claimed level & status
-      let claimedLevel: SkillProficiencyLevel = 'Intermediate';
-      let confidence = 65;
-      let status: SkillVerificationStatus = 'CLAIMED';
-      let verificationLevel: 'Strong' | 'Moderate' | 'Needs Review' | 'Unverified' = 'Unverified';
-
-      if (evidenceList.length >= 2) {
-        claimedLevel = 'Advanced';
-        confidence = Math.min(96, 75 + evidenceList.length * 6);
-        status = 'EVIDENCE_FOUND';
-        verificationLevel = 'Strong';
-      } else if (evidenceList.length === 1) {
-        claimedLevel = 'Intermediate';
-        confidence = 75;
-        status = 'PARTIALLY_SUPPORTED';
-        verificationLevel = 'Moderate';
-      } else {
-        claimedLevel = 'Beginner';
-        confidence = 50;
-        status = 'NEEDS_ASSESSMENT';
-        verificationLevel = 'Unverified';
-      }
-
-      const item = await SkillEvidence.findOneAndUpdate(
-        { candidateId, resumeId, skill },
-        {
-          candidateId,
-          resumeId,
-          skill,
-          claimedLevel,
-          confidence,
-          status,
-          evidence: evidenceList,
-          verificationLevel,
-          notes: `${evidenceList.length} evidence source(s) mapped from resume.`,
-        },
-        { upsert: true, new: true }
-      );
-
-      savedItems.push(item);
-    }
-
-    // Refresh resume-specific TrustScore & Verification Report
+    // Refresh resume-specific TrustScore & Verification Report (Requirement 19)
     await this.calculateVerificationScore(candidateId, resumeId);
 
     return savedItems;
