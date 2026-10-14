@@ -63,6 +63,8 @@ export interface ICertification {
 export interface IResumeAnalysis {
   personalInfo: IPersonalInfo;
   summary: string | null;
+  aiExecutiveSummary?: string | null;
+  ai_executive_summary?: string | null;
   skills: ISkillsCategory;
   education: IEducation[];
   experience: IExperience[];
@@ -335,6 +337,10 @@ export interface IAssessmentSession {
     cameraInterruptions: number;
     copyPasteAttempts: number;
     rightClicks: number;
+    multipleFaces?: number;
+    faceNotDetected?: number;
+    humanSpeech?: number;
+    microphoneInterruptions?: number;
     integrityIndicator: 'High' | 'Moderate' | 'Review Recommended';
   };
 }
@@ -345,7 +351,12 @@ export interface IProctoringEvent {
   severity: 'INFO' | 'WARNING' | 'HIGH';
   description: string;
   timestamp: string;
+  startedAt?: string;
+  endedAt?: string;
   durationSeconds?: number;
+  durationMs?: number;
+  metadata?: Record<string, any>;
+  evidenceSnapshot?: string;
 }
 
 export interface ISnapshotReference {

@@ -28,8 +28,12 @@ const ProctoringEventSchema = new Schema<IProctoringEventDocument>(
         'CUT_ATTEMPT',
         'RIGHT_CLICK',
         'CAMERA_INTERRUPTED',
+        'CAMERA_INTERRUPTION',
         'FACE_NOT_DETECTED',
+        'MULTIPLE_FACES_DETECTED',
         'MICROPHONE_INTERRUPTED',
+        'MICROPHONE_INTERRUPTION',
+        'HUMAN_SPEECH_DETECTED',
         'NETWORK_DISCONNECT',
         'TIME_WARNING',
         'ASSESSMENT_TIMEOUT',
@@ -42,9 +46,22 @@ const ProctoringEventSchema = new Schema<IProctoringEventDocument>(
       default: Date.now,
       index: true,
     },
+    startedAt: {
+      type: Date,
+    },
+    endedAt: {
+      type: Date,
+    },
+    durationMs: {
+      type: Number,
+      default: 0,
+    },
     durationSeconds: {
       type: Number,
       default: 0,
+    },
+    evidenceSnapshot: {
+      type: String,
     },
     metadata: {
       type: Schema.Types.Mixed,

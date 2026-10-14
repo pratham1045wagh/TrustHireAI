@@ -5,6 +5,15 @@ import { IAssessmentQuestion, QuestionDifficulty, AssessmentType } from '../../t
 import { LoadingState } from '../../components/common/LoadingState';
 import { Badge } from '../../components/common/Badge';
 import {
+  initFaceDetector,
+  detectFacesInVideo,
+  initSileroVAD,
+  checkProctoringBrowserSupport,
+  PROCTORING_CONFIG,
+} from '../../utils/proctoringEngine';
+import { FaceDetector } from '@mediapipe/tasks-vision';
+import { MicVAD } from '@ricky0123/vad-web';
+import {
   ShieldAlert,
   Camera,
   Mic,
@@ -17,6 +26,8 @@ import {
   Send,
   HelpCircle,
   Sparkles,
+  Volume2,
+  Users,
 } from 'lucide-react';
 
 export const ProctoredAssessmentPage: React.FC = () => {
@@ -26,16 +37,24 @@ export const ProctoredAssessmentPage: React.FC = () => {
 
   const urlType = searchParams.get('type') as AssessmentType | null;
 
-  // Pre-check & Consent states (Strict System Readiness Check Gate for ALL assessments)
+  // Pre-check & Consent states (Strict System Readiness Check Gate)
   const [assessmentType, setAssessmentType] = useState<AssessmentType>(urlType || 'RESUME_BASED');
   const [hasStarted, setHasStarted] = useState<boolean>(false);
   const [cameraPermissionGranted, setCameraPermissionGranted] = useState<boolean>(false);
+  const [micPermissionGranted, setMicPermissionGranted] = useState<boolean>(false);
   const [cameraConnected, setCameraConnected] = useState<boolean>(false);
-  const [faceDetected, setFaceDetected] = useState<boolean>(false);
+  const [micConnected, setMicConnected] = useState<boolean>(false);
+  const [vadReady, setVadReady] = useState<boolean>(false);
+  const [faceCountState, setFaceCountState] = useState<number>(0);
   const [faceStabilized, setFaceStabilized] = useState<boolean>(false);
   const [fullscreenReady, setFullscreenReady] = useState<boolean>(true);
   const [consentAccepted, setConsentAccepted] = useState<boolean>(false);
   const [readinessError, setReadinessError] = useState<string>('');
+
+  // Live Proctoring Statuses
+  const [cameraStatus, setCameraStatus] = useState<'INITIALIZING' | 'ACTIVE' | 'INTERRUPTED'>('INITIALIZING');
+  const [micStatus, setMicStatus] = useState<'INITIALIZING' | 'ACTIVE' | 'INTERRUPTED'>('INITIALIZING');
+  const [speechStatus, setSpeechStatus] = useState<'NONE' | 'DETECTED'>('NONE');
 
   // Assessment states
   const [loading, setLoading] = useState<boolean>(true);
@@ -52,17 +71,35 @@ export const ProctoredAssessmentPage: React.FC = () => {
   // Media references
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const faceDetectorRef = useRef<FaceDetector | null>(null);
+  const vadRef = useRef<MicVAD | null>(null);
+  const isInitializingVadRef = useRef<boolean>(false);
   const timerIntervalRef = useRef<any>(null);
   const snapshotIntervalRef = useRef<any>(null);
   const faceDetectionIntervalRef = useRef<any>(null);
   const faceStabilityTimerRef = useRef<any>(null);
   const listenersAttachedRef = useRef<boolean>(false);
 
+  // Persistence & Deduplication refs
+  const speechStartTimeRef = useRef<number | null>(null);
+  const lastSpeechEventTimeRef = useRef<number>(0);
+  const speechEventLoggedForCurrentBlockRef = useRef<boolean>(false);
+  const multipleFacesStartRef = useRef<number | null>(null);
+  const multipleFacesEventLoggedRef = useRef<boolean>(false);
+  const maxFaceCountRef = useRef<number>(1);
+  const faceMissingStartRef = useRef<number | null>(null);
+  const faceMissingEventLoggedRef = useRef<boolean>(false);
+  const consecutiveSingleFaceCountRef = useRef<number>(0);
+  const consecutiveZeroFaceCountRef = useRef<number>(0);
+  const consecutiveMultipleFaceCountRef = useRef<number>(0);
+  const hasStartedRef = useRef<boolean>(false);
+  hasStartedRef.current = hasStarted;
+
   useEffect(() => {
     fetchSessionInitialStatus();
 
     return () => {
-      stopCamera();
+      stopMedia();
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       if (snapshotIntervalRef.current) clearInterval(snapshotIntervalRef.current);
       if (faceDetectionIntervalRef.current) clearInterval(faceDetectionIntervalRef.current);
@@ -147,46 +184,166 @@ export const ProctoredAssessmentPage: React.FC = () => {
     }
   };
 
-  // Hardware Readiness & Face Detection Verification
+  // Hardware Readiness & Local AI Verification (MediaPipe + Silero VAD)
   const initializeSystemReadiness = async () => {
     setReadinessError('');
+
+    // Phase 37: Browser support check
+    const support = checkProctoringBrowserSupport();
+    if (!support.supported) {
+      setReadinessError(
+        support.reason ||
+          'Your browser does not support the required proctoring features. Please use a supported modern browser.'
+      );
+      return;
+    }
+
     try {
+      // Phase 1, 2, 4, 16: Mandatory Camera + Microphone streams
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: true,
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       });
 
       streamRef.current = stream;
       setCameraConnected(true);
+      setMicConnected(true);
       setCameraPermissionGranted(true);
+      setMicPermissionGranted(true);
+      setCameraStatus('ACTIVE');
+      setMicStatus('ACTIVE');
 
+      // Setup track interruption listeners (Phase 24 & 25)
+      const videoTrack = stream.getVideoTracks()[0];
+      const audioTrack = stream.getAudioTracks()[0];
+
+      if (videoTrack) {
+        videoTrack.onended = () => {
+          setCameraStatus('INTERRUPTED');
+          if (hasStartedRef.current) {
+            logProctoringEvent('CAMERA_INTERRUPTED', { reason: 'Camera stream disconnected' });
+            showWarningToast('Webcam connection was lost or interrupted.');
+          }
+        };
+      }
+
+      if (audioTrack) {
+        audioTrack.onended = () => {
+          setMicStatus('INTERRUPTED');
+          if (hasStartedRef.current) {
+            logProctoringEvent('MICROPHONE_INTERRUPTED', { reason: 'Microphone stream disconnected' });
+            showWarningToast('Microphone connection was lost or interrupted.');
+          }
+        };
+      }
+
+      // Connect video stream to video element
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => {});
+        try {
+          await videoRef.current.play();
+        } catch (e) {}
       }
 
-      startFaceDetectionMonitoring();
-    } catch (err: any) {
-      console.warn('Primary camera/mic access failed, attempting video-only:', err);
+      // Initialize MediaPipe Face Detector (Phase 7 & Phase 10)
       try {
-        const videoStream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 640 }, height: { ideal: 480 } },
-        });
-        streamRef.current = videoStream;
-        setCameraConnected(true);
-        setCameraPermissionGranted(true);
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = videoStream;
-          await videoRef.current.play().catch(() => {});
-        }
-
-        startFaceDetectionMonitoring();
-      } catch (videoErr: any) {
-        setCameraConnected(false);
-        setCameraPermissionGranted(false);
-        setReadinessError('Camera access is required to start this assessment.');
+        const detector = await initFaceDetector();
+        faceDetectorRef.current = detector;
+      } catch (detectorErr: any) {
+        console.warn('Face detector initialization warning:', detectorErr);
       }
+
+      // Start continuous face detection loop immediately (decoupled from VAD)
+      startFaceDetectionMonitoring();
+
+      // Initialize Silero VAD concurrently without blocking face detection
+      if (!vadRef.current && !isInitializingVadRef.current) {
+        isInitializingVadRef.current = true;
+        try {
+          const vad = await initSileroVAD(stream, {
+            onSpeechStart: () => {
+              speechStartTimeRef.current = Date.now();
+              speechEventLoggedForCurrentBlockRef.current = false;
+              setSpeechStatus('DETECTED');
+            },
+            onSpeechRealStart: () => {
+              if (!speechStartTimeRef.current) speechStartTimeRef.current = Date.now();
+              setSpeechStatus('DETECTED');
+            },
+            onSpeechEnd: () => {
+              const start = speechStartTimeRef.current;
+              speechStartTimeRef.current = null;
+              setSpeechStatus('NONE');
+
+              if (!start || !hasStartedRef.current) return;
+              const durationMs = Date.now() - start;
+
+              // Phase 19: Speech duration filtering
+              if (durationMs < PROCTORING_CONFIG.SPEECH_IGNORE_MS) {
+                return;
+              }
+
+              if (
+                durationMs >= PROCTORING_CONFIG.SPEECH_WARNING_MS &&
+                durationMs < PROCTORING_CONFIG.SPEECH_EVENT_MS
+              ) {
+                showWarningToast('Human speech detected during assessment.');
+                return;
+              }
+
+              if (durationMs >= PROCTORING_CONFIG.SPEECH_EVENT_MS) {
+                const now = Date.now();
+                if (
+                  !speechEventLoggedForCurrentBlockRef.current &&
+                  now - lastSpeechEventTimeRef.current >= PROCTORING_CONFIG.SPEECH_COOLDOWN_MS
+                ) {
+                  lastSpeechEventTimeRef.current = now;
+                  speechEventLoggedForCurrentBlockRef.current = true;
+                  logProctoringEvent(
+                    'HUMAN_SPEECH_DETECTED',
+                    {
+                      speechDurationMs: durationMs,
+                      startedAt: new Date(start).toISOString(),
+                      endedAt: new Date(now).toISOString(),
+                    },
+                    durationMs / 1000
+                  );
+                  showWarningToast('Human speech detected during assessment.');
+                }
+              }
+            },
+            onVADMisfire: () => {
+              speechStartTimeRef.current = null;
+              setSpeechStatus('NONE');
+            },
+          });
+          vadRef.current = vad;
+          setVadReady(true);
+        } catch (vadErr: any) {
+          console.error('Silero VAD initialization failed:', vadErr);
+          setReadinessError(
+            vadErr?.message
+              ? `Voice Activity Detection: ${vadErr.message}`
+              : 'Microphone Voice Activity Detection failed to initialize. Please retry.'
+          );
+        } finally {
+          isInitializingVadRef.current = false;
+        }
+      }
+    } catch (err: any) {
+      console.error('System readiness initialization error:', err);
+      setCameraConnected(false);
+      setMicConnected(false);
+      setCameraPermissionGranted(false);
+      setMicPermissionGranted(false);
+      setReadinessError(
+        'Camera and microphone access are both mandatory to start this assessment. Please grant browser permissions.'
+      );
     }
   };
 
@@ -194,82 +351,201 @@ export const ProctoredAssessmentPage: React.FC = () => {
     if (faceDetectionIntervalRef.current) clearInterval(faceDetectionIntervalRef.current);
 
     faceDetectionIntervalRef.current = setInterval(async () => {
-      if (!videoRef.current || !streamRef.current) return;
+      if (!videoRef.current || !streamRef.current || !faceDetectorRef.current) return;
 
       const video = videoRef.current;
       if (video.readyState < 2 || video.videoWidth === 0) return;
 
-      let detected = false;
+      const facesCount = detectFacesInVideo(faceDetectorRef.current, video);
 
-      // Try native Chrome/Edge FaceDetector API if supported
-      if ('FaceDetector' in window) {
-        try {
-          const detector = new (window as any).FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
-          const faces = await detector.detect(video);
-          detected = faces.length > 0;
-        } catch (e) {
-          detected = true;
-        }
-      } else {
-        // Fallback: Frame variance and luminance check to ensure a live subject is in frame
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = 64;
-          canvas.height = 48;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(video, 0, 0, 64, 48);
-            const imgData = ctx.getImageData(0, 0, 64, 48);
-            let totalLuminance = 0;
-            const len = imgData.data.length;
-            for (let i = 0; i < len; i += 4) {
-              totalLuminance += 0.299 * imgData.data[i] + 0.587 * imgData.data[i + 1] + 0.114 * imgData.data[i + 2];
-            }
-            const avgLuminance = totalLuminance / (len / 4);
-            detected = avgLuminance > 12 && avgLuminance < 245;
-          } else {
-            detected = true;
-          }
-        } catch {
-          detected = true;
-        }
-      }
+      // Pre-assessment readiness gate check (hasStarted === false)
+      if (!hasStartedRef.current) {
+        if (facesCount === 1) {
+          consecutiveSingleFaceCountRef.current += 1;
+          consecutiveZeroFaceCountRef.current = 0;
+          consecutiveMultipleFaceCountRef.current = 0;
 
-      if (detected) {
-        setFaceDetected(true);
-        setReadinessError('');
-        if (!faceStabilized && !faceStabilityTimerRef.current) {
-          faceStabilityTimerRef.current = setTimeout(() => {
+          // Confirmed 1 person
+          setFaceCountState(1);
+
+          // Face is stabilized after 3 consecutive detected intervals (~1 second)
+          if (consecutiveSingleFaceCountRef.current >= 3) {
             setFaceStabilized(true);
-            faceStabilityTimerRef.current = null;
-          }, 1500);
+            setReadinessError((prev) => (prev.includes('face') || prev.includes('Position') ? '' : prev));
+          }
+        } else if (facesCount === 0) {
+          consecutiveZeroFaceCountRef.current += 1;
+          consecutiveMultipleFaceCountRef.current = 0;
+
+          // Only un-stabilize if face has been consistently absent for >= 4 consecutive checks (~1.4s)
+          // This eliminates false-negative flickers from transient frame skips
+          if (consecutiveZeroFaceCountRef.current >= 4) {
+            consecutiveSingleFaceCountRef.current = 0;
+            setFaceCountState(0);
+            setFaceStabilized(false);
+            setReadinessError('Please position your face clearly in front of the camera.');
+          }
+        } else if (facesCount > 1) {
+          consecutiveMultipleFaceCountRef.current += 1;
+          consecutiveZeroFaceCountRef.current = 0;
+
+          // Multiple faces confirmed ONLY after >= 2 consecutive frames (~700ms)
+          // This eliminates single-frame false-positive spikes while preserving real multi-person detection
+          if (consecutiveMultipleFaceCountRef.current >= 2) {
+            consecutiveSingleFaceCountRef.current = 0;
+            setFaceCountState(facesCount);
+            setFaceStabilized(false);
+            setReadinessError(
+              'Multiple faces detected. Only one person should be visible before starting the assessment.'
+            );
+          }
         }
-      } else {
-        setFaceDetected(false);
-        setFaceStabilized(false);
-        if (faceStabilityTimerRef.current) {
-          clearTimeout(faceStabilityTimerRef.current);
-          faceStabilityTimerRef.current = null;
+        return;
+      }
+
+      // DURING ASSESSMENT (hasStarted === true)
+      if (facesCount === 1) {
+        // Normal single person
+        faceMissingStartRef.current = null;
+        faceMissingEventLoggedRef.current = false;
+        multipleFacesStartRef.current = null;
+        multipleFacesEventLoggedRef.current = false;
+        maxFaceCountRef.current = 1;
+      } else if (facesCount === 0) {
+        // Face missing monitoring (Phase 11)
+        if (!faceMissingStartRef.current) {
+          faceMissingStartRef.current = Date.now();
         }
-        setReadinessError('Face not detected. Please position your face clearly in front of the camera.');
-        if (hasStarted) {
-          logProctoringEvent('FACE_NOT_DETECTED', { timestamp: new Date() });
+        const missingDuration = Date.now() - faceMissingStartRef.current;
+
+        if (
+          missingDuration >= PROCTORING_CONFIG.FACE_MISSING_WARNING_MS &&
+          missingDuration < PROCTORING_CONFIG.FACE_MISSING_EVENT_MS
+        ) {
           showWarningToast('Face not detected. Please remain facing the camera.');
+        } else if (missingDuration >= PROCTORING_CONFIG.FACE_MISSING_EVENT_MS) {
+          if (!faceMissingEventLoggedRef.current) {
+            faceMissingEventLoggedRef.current = true;
+            logProctoringEvent(
+              'FACE_NOT_DETECTED',
+              {
+                durationMs: missingDuration,
+                startedAt: new Date(faceMissingStartRef.current).toISOString(),
+              },
+              missingDuration / 1000
+            );
+            showWarningToast('Face not detected in camera frame.');
+          }
+        }
+      } else if (facesCount > 1) {
+        // Multiple faces monitoring (Phase 12, 13, 14)
+        if (!multipleFacesStartRef.current) {
+          multipleFacesStartRef.current = Date.now();
+          maxFaceCountRef.current = facesCount;
+        } else {
+          maxFaceCountRef.current = Math.max(maxFaceCountRef.current, facesCount);
+        }
+
+        const multiDuration = Date.now() - multipleFacesStartRef.current;
+
+        if (multiDuration >= PROCTORING_CONFIG.MULTIPLE_FACES_CONFIRM_MS) {
+          if (!multipleFacesEventLoggedRef.current) {
+            multipleFacesEventLoggedRef.current = true;
+            showWarningToast(`Multiple faces detected (${maxFaceCountRef.current} persons). Only one person is allowed.`);
+
+            // Capture evidence snapshot immediately (Phase 14)
+            captureAndUploadSnapshot('Evidence: Multiple faces detected', async (snapshotFileName) => {
+              await logProctoringEvent(
+                'MULTIPLE_FACES_DETECTED',
+                {
+                  faceCount: maxFaceCountRef.current,
+                  startedAt: new Date(multipleFacesStartRef.current || Date.now()).toISOString(),
+                  durationMs: multiDuration,
+                  evidenceSnapshot: snapshotFileName,
+                },
+                multiDuration / 1000,
+                snapshotFileName
+              );
+            });
+          }
         }
       }
-    }, 400);
+
+      // Continuous Speech persistence check (Phase 19)
+      if (speechStartTimeRef.current && hasStartedRef.current) {
+        const speechDurationMs = Date.now() - speechStartTimeRef.current;
+        if (
+          speechDurationMs >= PROCTORING_CONFIG.SPEECH_EVENT_MS &&
+          !speechEventLoggedForCurrentBlockRef.current &&
+          Date.now() - lastSpeechEventTimeRef.current >= PROCTORING_CONFIG.SPEECH_COOLDOWN_MS
+        ) {
+          lastSpeechEventTimeRef.current = Date.now();
+          speechEventLoggedForCurrentBlockRef.current = true;
+          logProctoringEvent(
+            'HUMAN_SPEECH_DETECTED',
+            {
+              speechDurationMs,
+              startedAt: new Date(speechStartTimeRef.current).toISOString(),
+            },
+            speechDurationMs / 1000
+          );
+          showWarningToast('Human speech detected during assessment.');
+        }
+      }
+    }, PROCTORING_CONFIG.FACE_DETECTION_INTERVAL_MS);
   };
 
-  const stopCamera = () => {
-    if (faceDetectionIntervalRef.current) clearInterval(faceDetectionIntervalRef.current);
-    if (faceStabilityTimerRef.current) clearTimeout(faceStabilityTimerRef.current);
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
+  const attachVideoRef = (el: HTMLVideoElement | null) => {
+    videoRef.current = el;
+    if (el && streamRef.current && el.srcObject !== streamRef.current) {
+      el.srcObject = streamRef.current;
+      el.play().catch(() => {});
     }
   };
 
+  const stopMedia = () => {
+    if (faceDetectionIntervalRef.current) clearInterval(faceDetectionIntervalRef.current);
+    if (faceStabilityTimerRef.current) clearTimeout(faceStabilityTimerRef.current);
+    if (snapshotIntervalRef.current) clearInterval(snapshotIntervalRef.current);
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+
+    if (vadRef.current) {
+      try {
+        vadRef.current.destroy();
+      } catch (e) {}
+      vadRef.current = null;
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (e) {}
+      });
+      streamRef.current = null;
+    }
+
+    setCameraConnected(false);
+    setMicConnected(false);
+    setCameraStatus('INITIALIZING');
+    setMicStatus('INITIALIZING');
+    isInitializingVadRef.current = false;
+    consecutiveSingleFaceCountRef.current = 0;
+    consecutiveZeroFaceCountRef.current = 0;
+    consecutiveMultipleFaceCountRef.current = 0;
+  };
+
   const handleStartExam = async () => {
-    if (!cameraConnected || !cameraPermissionGranted || !faceDetected || !faceStabilized || !consentAccepted) {
+    if (
+      !cameraConnected ||
+      !cameraPermissionGranted ||
+      !micConnected ||
+      !micPermissionGranted ||
+      !vadReady ||
+      faceCountState !== 1 ||
+      !faceStabilized ||
+      !consentAccepted
+    ) {
       return;
     }
 
@@ -286,10 +562,10 @@ export const ProctoredAssessmentPage: React.FC = () => {
       setHasStarted(true);
       startCountdownTimer();
 
-      // Start periodic webcam snapshots every 40 seconds
+      // Start periodic webcam snapshots every 40 seconds (Phase 15: PRESERVED)
       snapshotIntervalRef.current = setInterval(() => {
-        captureAndUploadSnapshot();
-      }, 40000);
+        captureAndUploadSnapshot('Periodic webcam verification snapshot');
+      }, PROCTORING_CONFIG.PERIODIC_SNAPSHOT_INTERVAL_MS);
 
       setupProctoringListeners();
     } catch (err: any) {
@@ -313,9 +589,14 @@ export const ProctoredAssessmentPage: React.FC = () => {
     };
 
     const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && assessmentType === 'RECRUITER_ROOM') {
-        logProctoringEvent('FULLSCREEN_EXIT', { exited: true });
-        showWarningToast('Fullscreen exited. Please remain in fullscreen during proctoring.');
+      if (!document.fullscreenElement) {
+        setFullscreenReady(false);
+        if (assessmentType === 'RECRUITER_ROOM') {
+          logProctoringEvent('FULLSCREEN_EXIT', { exited: true });
+          showWarningToast('Fullscreen exited. Please remain in fullscreen during proctoring.');
+        }
+      } else {
+        setFullscreenReady(true);
       }
     };
 
@@ -349,37 +630,60 @@ export const ProctoredAssessmentPage: React.FC = () => {
     setTimeout(() => setWarningMessage(''), 4500);
   };
 
-  const logProctoringEvent = async (eventType: string, metadata: any) => {
+  const logProctoringEvent = async (
+    eventType: string,
+    metadata: any = {},
+    durationSeconds: number = 0,
+    evidenceSnapshot?: string
+  ) => {
     try {
       await api.post('/proctoring/events', {
         sessionId,
         eventType,
         metadata,
+        durationSeconds,
+        durationMs: durationSeconds ? durationSeconds * 1000 : undefined,
+        startedAt: metadata?.startedAt,
+        endedAt: metadata?.endedAt,
+        evidenceSnapshot,
       });
     } catch (err) {
       // Non-blocking
     }
   };
 
-  const captureAndUploadSnapshot = async () => {
+  const captureAndUploadSnapshot = async (
+    eventContext: string = 'Periodic proctoring verification snapshot',
+    onUploaded?: (filename: string) => void
+  ) => {
     if (!videoRef.current || !streamRef.current) return;
 
     try {
+      const video = videoRef.current;
+      if (video.videoWidth === 0 || video.videoHeight === 0) return;
+
       const canvas = document.createElement('canvas');
-      canvas.width = 320;
-      canvas.height = 240;
+      canvas.width = 640;
+      canvas.height = 480;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.drawImage(videoRef.current, 0, 0, 320, 240);
-        canvas.toBlob(async (blob) => {
-          if (blob) {
-            const formData = new FormData();
-            formData.append('snapshot', blob, 'webcam.jpg');
-            formData.append('sessionId', sessionId || '');
-            formData.append('eventContext', 'Periodic proctoring snapshot');
-            await api.post('/proctoring/snapshots', formData);
-          }
-        }, 'image/jpeg', 0.7);
+        ctx.drawImage(video, 0, 0, 640, 480);
+        canvas.toBlob(
+          async (blob) => {
+            if (blob) {
+              const formData = new FormData();
+              formData.append('snapshot', blob, 'webcam.jpg');
+              formData.append('sessionId', sessionId || '');
+              formData.append('eventContext', eventContext);
+              const res = await api.post('/proctoring/snapshots', formData);
+              if (res.data?.success && res.data?.fileName && onUploaded) {
+                onUploaded(res.data.fileName);
+              }
+            }
+          },
+          'image/jpeg',
+          0.8
+        );
       }
     } catch (e) {
       // Non-blocking
@@ -465,7 +769,7 @@ export const ProctoredAssessmentPage: React.FC = () => {
   };
 
   const handleExamCompletion = () => {
-    stopCamera();
+    stopMedia();
     if (document.fullscreenElement) {
       try {
         document.exitFullscreen();
@@ -489,7 +793,10 @@ export const ProctoredAssessmentPage: React.FC = () => {
     const isReadyToStart =
       cameraConnected &&
       cameraPermissionGranted &&
-      faceDetected &&
+      micConnected &&
+      micPermissionGranted &&
+      vadReady &&
+      faceCountState === 1 &&
       faceStabilized &&
       fullscreenReady &&
       consentAccepted;
@@ -509,7 +816,7 @@ export const ProctoredAssessmentPage: React.FC = () => {
                 </Badge>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Proctored assessment session requires camera verification, active face detection, and integrity consent.
+                Proctored assessment session requires camera verification, microphone monitoring, single-face detection, and integrity consent.
               </p>
             </div>
           </div>
@@ -517,44 +824,55 @@ export const ProctoredAssessmentPage: React.FC = () => {
           {/* Camera Preview Box with Face Status Overlay */}
           <div className="relative aspect-video max-w-md mx-auto bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 flex items-center justify-center">
             <video
-              ref={videoRef}
+              ref={attachVideoRef}
               autoPlay
               playsInline
               muted
               className="w-full h-full object-cover transform -scale-x-100"
             />
 
-            {!cameraPermissionGranted ? (
+            {!cameraPermissionGranted || !micPermissionGranted ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/85 text-white p-4 text-center">
-                <Camera className="w-10 h-10 text-slate-400 mb-2" />
-                <p className="text-xs font-bold">Camera access is required to start this assessment.</p>
+                <div className="flex items-center gap-2 mb-2">
+                  <Camera className="w-8 h-8 text-ai-400" />
+                  <Mic className="w-8 h-8 text-brand-400" />
+                </div>
+                <p className="text-xs font-bold">Camera and microphone access are required to start this assessment.</p>
                 <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
-                  Click below to enable your camera and initialize automatic face detection.
+                  Click below to enable your camera and microphone for automated local face detection and voice activity monitoring.
                 </p>
                 <button
                   type="button"
                   onClick={initializeSystemReadiness}
                   className="mt-3 px-5 py-2.5 rounded-xl bg-ai-600 hover:bg-ai-500 text-white text-xs font-bold transition-all shadow-md"
                 >
-                  Enable Camera
+                  Enable Camera & Microphone
                 </button>
               </div>
-            ) : !faceDetected ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/70 text-white p-4 text-center">
+            ) : faceCountState === 0 ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/75 text-white p-4 text-center">
                 <AlertTriangle className="w-9 h-9 text-amber-400 mb-2 animate-bounce" />
                 <p className="text-xs font-bold text-amber-200">
-                  Face not detected. Please position your face clearly in front of the camera.
+                  Please position your face clearly in front of the camera.
                 </p>
                 <span className="text-[10px] text-slate-400 mt-1">Ensure good lighting and direct eye contact.</span>
               </div>
+            ) : faceCountState > 1 ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-rose-950/80 text-white p-4 text-center">
+                <Users className="w-9 h-9 text-rose-400 mb-2 animate-pulse" />
+                <p className="text-xs font-bold text-rose-200">
+                  Multiple faces detected ({faceCountState} persons). Only one person should be visible before starting the assessment.
+                </p>
+                <span className="text-[10px] text-rose-300 mt-1">Please ensure you are alone in frame.</span>
+              </div>
             ) : !faceStabilized ? (
               <div className="absolute top-3 right-3 px-3 py-1 rounded-full bg-amber-500/90 text-white text-[10px] font-bold shadow-md flex items-center gap-1.5 animate-pulse">
-                <span>Stabilizing face detection...</span>
+                <span>Stabilizing face verification...</span>
               </div>
             ) : (
               <div className="absolute top-3 right-3 px-3 py-1 rounded-full bg-emerald-600/90 text-white text-[10px] font-black uppercase tracking-wider shadow-md flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Face Detected & Verified</span>
+                <span>Single Person Verified</span>
               </div>
             )}
           </div>
@@ -572,25 +890,11 @@ export const ProctoredAssessmentPage: React.FC = () => {
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2 font-bold text-slate-700">
                 <Camera className="w-4 h-4 text-ai-600" />
-                Camera connected
+                Camera connected & permission granted
               </span>
-              {cameraConnected ? (
+              {cameraConnected && cameraPermissionGranted ? (
                 <span className="text-emerald-600 font-bold flex items-center gap-1">
                   <CheckCircle2 className="w-4 h-4" /> Ready
-                </span>
-              ) : (
-                <span className="text-slate-400 font-medium">Checking...</span>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 font-bold text-slate-700">
-                <CheckCircle2 className="w-4 h-4 text-ai-600" />
-                Camera permission granted
-              </span>
-              {cameraPermissionGranted ? (
-                <span className="text-emerald-600 font-bold flex items-center gap-1">
-                  <CheckCircle2 className="w-4 h-4" /> Granted
                 </span>
               ) : (
                 <span className="text-slate-400 font-medium">Pending Permission</span>
@@ -599,14 +903,50 @@ export const ProctoredAssessmentPage: React.FC = () => {
 
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2 font-bold text-slate-700">
-                <ShieldAlert className="w-4 h-4 text-ai-600" />
-                Face detected & stabilized
+                <Mic className="w-4 h-4 text-ai-600" />
+                Microphone connected & permission granted
               </span>
-              {faceDetected && faceStabilized ? (
+              {micConnected && micPermissionGranted ? (
                 <span className="text-emerald-600 font-bold flex items-center gap-1">
-                  <CheckCircle2 className="w-4 h-4" /> Verified
+                  <CheckCircle2 className="w-4 h-4" /> Ready
                 </span>
-              ) : faceDetected ? (
+              ) : (
+                <span className="text-slate-400 font-medium">Pending Permission</span>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2 font-bold text-slate-700">
+                <Volume2 className="w-4 h-4 text-ai-600" />
+                Voice Activity Detection (Silero VAD)
+              </span>
+              {vadReady ? (
+                <span className="text-emerald-600 font-bold flex items-center gap-1">
+                  <CheckCircle2 className="w-4 h-4" /> Ready
+                </span>
+              ) : readinessError && (readinessError.toLowerCase().includes('voice') || readinessError.toLowerCase().includes('vad')) ? (
+                <span className="text-rose-600 font-bold flex items-center gap-1">
+                  <AlertTriangle className="w-4 h-4" /> Failed
+                </span>
+              ) : (
+                <span className="text-slate-400 font-medium">Initializing...</span>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2 font-bold text-slate-700">
+                <ShieldAlert className="w-4 h-4 text-ai-600" />
+                Single face detected & stabilized
+              </span>
+              {faceCountState === 1 && faceStabilized ? (
+                <span className="text-emerald-600 font-bold flex items-center gap-1">
+                  <CheckCircle2 className="w-4 h-4" /> Verified (1 Person)
+                </span>
+              ) : faceCountState > 1 ? (
+                <span className="text-rose-600 font-bold flex items-center gap-1">
+                  <AlertTriangle className="w-4 h-4" /> {faceCountState} Faces Detected
+                </span>
+              ) : faceCountState === 1 ? (
                 <span className="text-amber-600 font-bold flex items-center gap-1 animate-pulse">
                   Stabilizing (1.5s)...
                 </span>
@@ -647,7 +987,7 @@ export const ProctoredAssessmentPage: React.FC = () => {
               Proctoring & Privacy Consent
             </p>
             <p className="text-amber-800 leading-relaxed text-[11px]">
-              During this screening assessment, periodic webcam snapshots will be captured to verify candidate identity. Fullscreen exit and window switching events are recorded objectively in your session compliance timeline. All monitoring records are strictly private and accessible only to authorized reviewers.
+              During this screening assessment, live webcam preview and microphone monitoring are active locally in your browser. Periodic integrity snapshots and event-triggered evidence snapshots will be captured to verify identity. Human speech detection and window switching events are recorded objectively in your session compliance timeline. All monitoring records are strictly private and accessible only to authorized reviewers.
             </p>
             <label className="flex items-center gap-2.5 pt-2 cursor-pointer font-bold text-slate-800">
               <input
@@ -691,19 +1031,132 @@ export const ProctoredAssessmentPage: React.FC = () => {
         </div>
       )}
 
-      {/* Floating Webcam Feed (Proctored stream active during exam) */}
+      {/* Floating Webcam Feed + Live Proctoring Status Panel (Phase 9 & Phase 23) */}
       {streamRef.current && (
-        <div className="fixed bottom-6 right-6 z-40 w-44 h-32 rounded-2xl bg-slate-900 border-2 border-ai-500/80 shadow-2xl overflow-hidden">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full h-full object-cover transform -scale-x-100"
-          />
-          <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-rose-600/90 text-white text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm">
-            <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
-            Proctored
+        <div className="fixed bottom-6 right-6 z-40 w-64 rounded-2xl bg-slate-900/95 backdrop-blur-md border border-slate-700/80 shadow-2xl overflow-hidden text-white font-sans">
+          {/* Continuous Camera Preview */}
+          <div className="relative aspect-video w-full bg-black overflow-hidden border-b border-slate-800">
+            <video
+              ref={attachVideoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover transform -scale-x-100"
+            />
+            <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-rose-600/90 text-white text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+              Proctored Live
+            </div>
+            {faceCountState > 1 && (
+              <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center gap-1 animate-pulse">
+                <span>⚠ Multiple Faces</span>
+              </div>
+            )}
+            {speechStatus === 'DETECTED' && (
+              <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-full bg-amber-500 text-white text-[9px] font-bold flex items-center gap-1 animate-pulse">
+                <span>⚠ Speech</span>
+              </div>
+            )}
+          </div>
+
+          {/* Compact Live Proctoring Status Panel (Phase 23) */}
+          <div className="p-3 space-y-1.5 text-[11px]">
+            <div className="flex items-center justify-between pb-1.5 border-b border-slate-800">
+              <span className="font-extrabold uppercase tracking-wider text-[10px] text-slate-400">
+                Live Proctoring
+              </span>
+              <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Active
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-x-2 gap-y-1 pt-0.5 text-[10px]">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Camera</span>
+                <span
+                  className={
+                    cameraStatus === 'ACTIVE'
+                      ? 'text-emerald-400 font-bold flex items-center gap-1'
+                      : 'text-rose-400 font-bold flex items-center gap-1'
+                  }
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      cameraStatus === 'ACTIVE' ? 'bg-emerald-400' : 'bg-rose-400'
+                    }`}
+                  />
+                  {cameraStatus === 'ACTIVE' ? 'Active' : 'Interrupted'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Microphone</span>
+                <span
+                  className={
+                    micStatus === 'ACTIVE'
+                      ? 'text-emerald-400 font-bold flex items-center gap-1'
+                      : 'text-rose-400 font-bold flex items-center gap-1'
+                  }
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      micStatus === 'ACTIVE' ? 'bg-emerald-400' : 'bg-rose-400'
+                    }`}
+                  />
+                  {micStatus === 'ACTIVE' ? 'Active' : 'Interrupted'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Face</span>
+                <span
+                  className={
+                    faceCountState === 1
+                      ? 'text-emerald-400 font-bold'
+                      : faceCountState > 1
+                      ? 'text-rose-400 font-bold'
+                      : 'text-amber-400 font-bold'
+                  }
+                >
+                  ● {faceCountState === 1 ? 'Detected' : faceCountState > 1 ? `${faceCountState} Detected` : 'Missing'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Person</span>
+                <span
+                  className={
+                    faceCountState === 1
+                      ? 'text-emerald-400 font-bold'
+                      : faceCountState > 1
+                      ? 'text-rose-400 font-bold'
+                      : 'text-slate-400'
+                  }
+                >
+                  {faceCountState === 1 ? 'Single' : faceCountState > 1 ? 'Multiple ⚠' : 'None'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Speech</span>
+                <span
+                  className={
+                    speechStatus === 'NONE'
+                      ? 'text-emerald-400 font-bold'
+                      : 'text-amber-400 font-bold animate-pulse'
+                  }
+                >
+                  ● {speechStatus === 'NONE' ? 'None' : 'Detected ⚠'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Fullscreen</span>
+                <span className={fullscreenReady ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                  ● {fullscreenReady ? 'Active' : 'Exited'}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       )}

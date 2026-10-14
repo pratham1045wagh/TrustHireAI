@@ -16,6 +16,8 @@ export function normalizeResumeData(data: any): IResumeAnalysis & { workExperien
         portfolio: null,
       },
       summary: null,
+      aiExecutiveSummary: null,
+      ai_executive_summary: null,
       skills: {
         programmingLanguages: [],
         frameworks: [],
@@ -39,13 +41,22 @@ export function normalizeResumeData(data: any): IResumeAnalysis & { workExperien
 
   const toStringArray = (val: any): string[] => {
     if (!val) return [];
+    let items: string[] = [];
     if (Array.isArray(val)) {
-      return val.map((v) => (typeof v === 'string' ? v.trim() : String(v))).filter(Boolean);
+      items = val.map((v) => (typeof v === 'string' ? v.trim() : String(v))).filter(Boolean);
+    } else if (typeof val === 'string') {
+      items = val.split(/[,|]/).map((s) => s.trim()).filter(Boolean);
     }
-    if (typeof val === 'string') {
-      return val.split(/[,|]/).map((s) => s.trim()).filter(Boolean);
+    const seen = new Set<string>();
+    const unique: string[] = [];
+    for (const item of items) {
+      const lower = item.toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        unique.push(item);
+      }
     }
-    return [];
+    return unique;
   };
 
   const personalInfo: IPersonalInfo = {
@@ -77,12 +88,12 @@ export function normalizeResumeData(data: any): IResumeAnalysis & { workExperien
     : [];
 
   const education: IEducation[] = rawEdu.map((edu: any) => ({
-    degree: edu.degree || edu.title || null,
+    degree: edu.degree || edu.title || edu.qualification || null,
     institution: edu.institution || edu.school || edu.university || edu.college || null,
-    field: edu.field || edu.major || edu.branch || null,
+    field: edu.field || edu.major || edu.branch || edu.specialization || null,
     startYear: edu.startYear || edu.start_year || edu.startDate || null,
     endYear: edu.endYear || edu.end_year || edu.endDate || null,
-    grade: edu.grade || edu.cgpa || edu.gpa || null,
+    grade: edu.grade || edu.cgpa || edu.gpa || edu.percentage || edu.score || null,
   }));
 
   const rawExp = Array.isArray(data.experience)
@@ -131,9 +142,18 @@ export function normalizeResumeData(data: any): IResumeAnalysis & { workExperien
     date: cert.date || cert.issue_date || null,
   }));
 
+  const aiExecutiveSummary =
+    data.aiExecutiveSummary ||
+    data.ai_executive_summary ||
+    data.executiveSummary ||
+    data.executive_summary ||
+    null;
+
   return {
     personalInfo,
     summary: data.summary || data.professional_summary || data.objective || null,
+    aiExecutiveSummary,
+    ai_executive_summary: aiExecutiveSummary,
     skills,
     education,
     experience,

@@ -49,15 +49,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         <div className="p-5 overflow-y-auto">
           {/* Logo Branding */}
           <div className="hidden lg:flex items-center gap-2.5 mb-6 px-2">
-            <div className="p-2 bg-gradient-to-tr from-brand-600 to-ai-600 rounded-xl text-white shadow-sm">
+            <div className="p-2 bg-gradient-to-tr from-[#072969] to-[#0284c7] rounded-xl text-white shadow-sm">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
               <h1 className="font-extrabold text-lg text-slate-900 leading-tight">
-                Resume<span className="text-ai-600">AI</span>
+                TrustHire<span className="text-[#0284C7]">AI</span>
               </h1>
-              <p className="text-[10px] uppercase font-bold tracking-wider text-ai-600">
-                V2.5 Proctored AI
+              <p className="text-[10px] uppercase font-bold tracking-wider text-teal-600">
+                Verified Skills
               </p>
             </div>
           </div>

@@ -2,15 +2,14 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
-  Sparkles,
+  ShieldCheck,
   Eye,
   EyeOff,
-  CheckCircle2,
-  FileCheck2,
-  BrainCircuit,
   Lock,
   Mail,
   AlertCircle,
+  ArrowRight,
+  ArrowLeft,
 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
@@ -23,6 +22,10 @@ export const LoginPage: React.FC = () => {
 
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  React.useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,144 +50,174 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-center p-4 sm:p-6 lg:p-8 relative overflow-hidden">
-      {/* Dynamic AI Background Accent Blobs */}
-      <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-ai-600/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/4 translate-x-1/2 translate-y-1/2 w-96 h-96 bg-brand-600/20 rounded-full blur-3xl pointer-events-none" />
+    <div className="blueprint-grid min-h-screen p-4 sm:p-6 md:p-8 flex items-center justify-center relative overflow-hidden">
+      {/* Background Glow Blobs */}
+      <div className="fixed -top-24 left-1/4 w-96 h-96 bg-sky-200/50 rounded-full blur-[120px] pointer-events-none" />
+      <div className="fixed bottom-0 right-1/4 w-96 h-96 bg-teal-200/50 rounded-full blur-[120px] pointer-events-none" />
 
-      <div className="max-w-5xl mx-auto w-full bg-slate-900/90 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 relative z-10 backdrop-blur-xl">
+      {/* Main Login Card Container */}
+      <div className="max-w-5xl w-full rounded-3xl overflow-hidden border border-slate-200/90 white-card-shadow grid grid-cols-1 md:grid-cols-12 bg-white relative z-10 shadow-2xl">
         
-        {/* LEFT SIDE: Brand Branding & Visuals */}
-        <div className="lg:col-span-5 bg-gradient-to-br from-slate-900 via-ai-950 to-brand-950 p-8 sm:p-12 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-800">
+        {/* LEFT SIDE: Brand Panel */}
+        <div className="md:col-span-5 light-brand-panel p-6 sm:p-8 md:p-10 flex flex-col justify-between border-b md:border-b-0 md:border-r border-slate-200/80 relative">
           <div>
-            {/* Logo */}
-            <div className="flex items-center gap-3 mb-8">
-              <div className="p-2.5 bg-gradient-to-tr from-brand-500 to-ai-500 rounded-2xl text-white shadow-lg shadow-ai-500/30">
-                <Sparkles className="w-6 h-6" />
+            {/* Top Back link & Logo */}
+            <div className="mb-6">
+              <Link
+                to="/"
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-[#0284C7] transition-colors mb-4"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>← Back to TrustHireAI</span>
+              </Link>
+
+              <div className="flex items-center gap-3">
+                <div className="relative w-11 h-11 rounded-xl bg-gradient-to-br from-[#072969] via-[#0284c7] to-[#0D9488] flex items-center justify-center shadow-md text-white">
+                  <ShieldCheck className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <div className="text-xl font-black tracking-tight leading-none">
+                    <span className="text-[#0A192F]">TrustHire</span>
+                    <span className="text-[#0284C7]">AI</span>
+                  </div>
+                  <div className="text-[10px] text-slate-600 font-semibold mt-0.5">
+                    Verified Skills. Smarter Hiring.
+                  </div>
+                </div>
               </div>
-              <span className="text-2xl font-black tracking-tight text-white">
-                Resume<span className="text-ai-400">AI</span>
-              </span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white leading-tight mb-3">
-              Understand your resume. <br />
-              <span className="bg-gradient-to-r from-ai-400 to-brand-400 bg-clip-text text-transparent">
-                Discover your strengths.
+            <h1 className="text-2xl sm:text-3xl font-extrabold leading-tight text-[#0A192F]">
+              Understand your resume.
+              <span className="block bg-gradient-to-r from-[#072969] via-[#0284C7] to-[#0D9488] bg-clip-text text-transparent mt-1">
+                Verify your credibility.
               </span>
             </h1>
-            <p className="text-sm text-slate-400 mb-8 leading-relaxed">
-              AI-powered resume analysis built for modern professionals and recruiters seeking instant structured insights.
+
+            <p className="text-xs text-slate-600 mt-3 leading-relaxed font-medium">
+              Evidence-grounded skill verification and proctored technical assessments built for candidates and recruiters.
             </p>
 
-            {/* Feature Highlights */}
-            <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="p-1.5 rounded-lg bg-ai-500/10 text-ai-400 mt-0.5">
-                  <BrainCircuit className="w-4 h-4" />
+            {/* Three Visual Pillars */}
+            <div className="space-y-3 mt-6">
+              <div className="flex items-start gap-3 p-3 rounded-2xl bg-white/80 backdrop-blur-md border border-white shadow-xs">
+                <div className="w-8 h-8 rounded-xl bg-sky-100 border border-sky-200 flex items-center justify-center text-[#0284C7] text-xs shrink-0 font-bold">
+                  ⚡
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-slate-200">Google Gemini AI Engine</h4>
-                  <p className="text-xs text-slate-400">Deep structured extraction without hallucination.</p>
+                  <div className="text-xs font-extrabold text-[#0A192F]">CredRAG AI Verification</div>
+                  <div className="text-[11px] text-slate-600 leading-tight mt-0.5">
+                    Hybrid 768-D vector + lexical source hierarchy.
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3">
-                <div className="p-1.5 rounded-lg bg-brand-500/10 text-brand-400 mt-0.5">
-                  <FileCheck2 className="w-4 h-4" />
+              <div className="flex items-start gap-3 p-3 rounded-2xl bg-white/80 backdrop-blur-md border border-white shadow-xs">
+                <div className="w-8 h-8 rounded-xl bg-teal-100 border border-teal-200 flex items-center justify-center text-teal-700 text-xs shrink-0 font-bold">
+                  🛡️
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-slate-200">Real-Time Progress & ETA</h4>
-                  <p className="text-xs text-slate-400">Monitor file upload speed and estimated time live.</p>
+                  <div className="text-xs font-extrabold text-[#0A192F]">Proctored Exam Rooms (RAI-XXXXX)</div>
+                  <div className="text-[11px] text-slate-600 leading-tight mt-0.5">
+                    Server-authoritative timers & neutral integrity logs.
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3">
-                <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 mt-0.5">
-                  <CheckCircle2 className="w-4 h-4" />
+              <div className="flex items-start gap-3 p-3 rounded-2xl bg-white/80 backdrop-blur-md border border-white shadow-xs">
+                <div className="w-8 h-8 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-[#072969] text-xs shrink-0 font-bold">
+                  📊
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-slate-200">Skills & Projects Breakdown</h4>
-                  <p className="text-xs text-slate-400">Categorized programming, cloud, database & project views.</p>
+                  <div className="text-xs font-extrabold text-[#0A192F]">Transparent TrustScore</div>
+                  <div className="text-[11px] text-slate-600 leading-tight mt-0.5">
+                    30% Evidence + 50% Assessment + 20% Consistency.
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="mt-8 pt-6 border-t border-slate-800 text-[11px] text-slate-500 flex justify-between items-center">
-            <span>© 2026 ResumeAI Inc.</span>
-            <span className="font-semibold text-slate-400">V1.0 Production Release</span>
+          <div className="pt-5 mt-6 border-t border-slate-300/60 flex items-center justify-between text-[10px] font-semibold text-slate-500">
+            <span>© 2026 TrustHireAI</span>
+            <span className="text-teal-700 bg-teal-100/80 px-2.5 py-0.5 rounded-full border border-teal-200 font-bold">
+              V2.5 CredRAG Release
+            </span>
           </div>
         </div>
 
-        {/* RIGHT SIDE: Login Form */}
-        <div className="lg:col-span-7 p-8 sm:p-12 bg-slate-900/60 flex flex-col justify-center">
-          <div className="max-w-md mx-auto w-full">
-            <h2 className="text-2xl font-bold text-white mb-1">Welcome back</h2>
-            <p className="text-sm text-slate-400 mb-8">
-              Sign in to your account to continue analyzing resumes.
+        {/* RIGHT SIDE: Login Form Panel (Direct Email & Password - No Role Tabs!) */}
+        <div className="md:col-span-7 p-6 sm:p-8 md:p-12 flex flex-col justify-center bg-white">
+          <div className="max-w-md w-full mx-auto">
+            <h2 className="text-2xl font-extrabold text-[#0A192F]">
+              Welcome back
+            </h2>
+            <p className="text-xs text-slate-500 mt-1 font-medium">
+              Sign in to your TrustHireAI workspace to continue.
             </p>
 
             {error && (
-              <div className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+              <div className="mt-4 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
                 <span>{error}</span>
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Direct Login Form without any role tabs */}
+            <form onSubmit={handleSubmit} className="space-y-4 mt-6">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   Email Address
                 </label>
                 <div className="relative">
-                  <Mail className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@company.com"
-                    className="w-full pl-11 pr-4 py-3 bg-slate-800/80 border border-slate-700/80 rounded-xl text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-ai-500 focus:border-transparent transition"
+                    placeholder="Enter your email address"
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 text-xs focus:outline-none focus:ring-2 focus:ring-[#0284C7] focus:bg-white transition"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   Password
                 </label>
                 <div className="relative">
-                  <Lock className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full pl-11 pr-11 py-3 bg-slate-800/80 border border-slate-700/80 rounded-xl text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-ai-500 focus:border-transparent transition"
+                    placeholder="Enter your password"
+                    className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 text-xs focus:outline-none focus:ring-2 focus:ring-[#0284C7] focus:bg-white transition"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-xs">
-                <label className="flex items-center gap-2 text-slate-400 cursor-pointer">
+              <div className="flex items-center justify-between text-xs pt-0.5">
+                <label className="flex items-center gap-2 text-slate-600 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="rounded border-slate-700 bg-slate-800 text-ai-600 focus:ring-ai-500"
+                    className="rounded border-slate-300 text-[#0284C7] focus:ring-[#0284C7]"
                   />
                   <span>Remember me</span>
                 </label>
-                <span className="text-slate-500 hover:text-ai-400 cursor-pointer transition-colors">
+                <span className="text-slate-500 hover:text-[#0284C7] cursor-pointer transition-colors font-medium">
                   Forgot password?
                 </span>
               </div>
@@ -192,7 +225,7 @@ export const LoginPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full py-3.5 px-4 bg-gradient-to-r from-ai-600 to-brand-600 hover:from-ai-500 hover:to-brand-500 text-white font-bold text-sm rounded-xl shadow-lg shadow-ai-600/25 transition-all transform active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full py-3.5 px-4 bg-gradient-to-r from-[#072969] via-[#0284C7] to-[#0D9488] hover:brightness-105 text-white font-extrabold text-xs rounded-xl shadow-md shadow-sky-600/20 transition-all transform active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isSubmitting ? (
                   <>
@@ -200,15 +233,21 @@ export const LoginPage: React.FC = () => {
                     <span>Signing in...</span>
                   </>
                 ) : (
-                  <span>Sign In</span>
+                  <>
+                    <span>Sign In to TrustHireAI</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </>
                 )}
               </button>
             </form>
 
-            <div className="mt-8 text-center text-xs text-slate-400">
+            <div className="mt-8 text-center text-xs text-slate-500">
               Don't have an account?{' '}
-              <Link to="/register" className="font-bold text-ai-400 hover:text-ai-300 transition-colors">
-                Create one now
+              <Link
+                to="/register"
+                className="font-bold text-[#0284C7] hover:underline"
+              >
+                Create one free
               </Link>
             </div>
           </div>

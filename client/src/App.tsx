@@ -4,11 +4,18 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
+import { LandingPage } from './pages/LandingPage';
+import { FeaturesPage } from './pages/FeaturesPage';
+import { HowItWorksPage } from './pages/HowItWorksPage';
+import { PricingPage } from './pages/PricingPage';
+import { SecurityPage } from './pages/SecurityPage';
+import { ResourcesPage } from './pages/ResourcesPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { UploadPage } from './pages/UploadPage';
 import { AnalysisPage } from './pages/AnalysisPage';
 import { ResumesPage } from './pages/ResumesPage';
 import { LoadingState } from './components/common/LoadingState';
+import { ScrollToTop } from './components/common/ScrollToTop';
 
 // Recruiter Pages (V1.0 + V2.0 / V2.5)
 import { CreateJobPage } from './pages/recruiter/CreateJobPage';
@@ -112,7 +119,16 @@ export const App: React.FC = () => {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <ScrollToTop />
         <Routes>
+          {/* Public Landing & Informational Routes */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/how-it-works" element={<HowItWorksPage />} />
+          <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/security" element={<SecurityPage />} />
+          <Route path="/resources" element={<ResourcesPage />} />
+
           {/* Public Auth Routes */}
           <Route
             path="/login"

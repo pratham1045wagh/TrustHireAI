@@ -21,14 +21,14 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
         </button>
 
         <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-gradient-to-tr from-brand-600 to-ai-600 rounded-lg text-white shadow-xs">
+          <div className="p-1.5 bg-gradient-to-tr from-[#072969] to-[#0284c7] rounded-lg text-white shadow-xs">
             <Sparkles className="w-5 h-5" />
           </div>
           <span className="font-black text-xl text-slate-900 tracking-tight">
-            Resume<span className="text-ai-600">AI</span>
+            TrustHire<span className="text-[#0284C7]">AI</span>
           </span>
           <Badge variant="ai" size="sm">
-            V1.0
+            V2.5
           </Badge>
         </div>
       </div>

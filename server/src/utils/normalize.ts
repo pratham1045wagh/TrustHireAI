@@ -17,6 +17,8 @@ export function normalizeResumeData(data: any): IResumeAnalysis & { workExperien
         portfolio: null,
       },
       summary: null,
+      aiExecutiveSummary: null,
+      ai_executive_summary: null,
       skills: {
         programmingLanguages: [],
         frameworks: [],
@@ -38,13 +40,22 @@ export function normalizeResumeData(data: any): IResumeAnalysis & { workExperien
 
   const toStringArray = (val: any): string[] => {
     if (!val) return [];
+    let items: string[] = [];
     if (Array.isArray(val)) {
-      return val.map((v) => (typeof v === 'string' ? v.trim() : String(v))).filter(Boolean);
+      items = val.map((v) => (typeof v === 'string' ? v.trim() : String(v))).filter(Boolean);
+    } else if (typeof val === 'string') {
+      items = val.split(/[,|]/).map((s) => s.trim()).filter(Boolean);
     }
-    if (typeof val === 'string') {
-      return val.split(/[,|]/).map((s) => s.trim()).filter(Boolean);
+    const seen = new Set<string>();
+    const unique: string[] = [];
+    for (const item of items) {
+      const lower = item.toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        unique.push(item);
+      }
     }
-    return [];
+    return unique;
   };
 
   const personalInfo: IPersonalInfo = {
@@ -142,9 +153,23 @@ export function normalizeResumeData(data: any): IResumeAnalysis & { workExperien
     date: cert.date || cert.issue_date || cert.issueDate || null,
   }));
 
-  const normalized: IResumeAnalysis & { workExperience?: IExperience[]; educationHistory?: IEducation[] } = {
+  const aiExecutiveSummary =
+    data.aiExecutiveSummary ||
+    data.ai_executive_summary ||
+    data.executiveSummary ||
+    data.executive_summary ||
+    null;
+
+  const normalized: IResumeAnalysis & {
+    workExperience?: IExperience[];
+    educationHistory?: IEducation[];
+    aiExecutiveSummary?: string | null;
+    ai_executive_summary?: string | null;
+  } = {
     personalInfo,
     summary: data.summary || data.professional_summary || data.objective || null,
+    aiExecutiveSummary,
+    ai_executive_summary: aiExecutiveSummary,
     skills,
     education,
     experience,

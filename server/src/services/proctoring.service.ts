@@ -13,8 +13,12 @@ export class ProctoringService {
     eventType: ProctoringEventType;
     metadata?: Record<string, any>;
     durationSeconds?: number;
+    durationMs?: number;
+    startedAt?: Date;
+    endedAt?: Date;
+    evidenceSnapshot?: string;
   }): Promise<IProctoringEventDocument> {
-    const { sessionId, candidateId, eventType, metadata, durationSeconds } = params;
+    const { sessionId, candidateId, eventType, metadata, durationSeconds, durationMs, startedAt, endedAt, evidenceSnapshot } = params;
 
     let severity: EventSeverity = 'WARNING';
     let description = '';
@@ -51,14 +55,31 @@ export class ProctoringService {
         description = 'Context menu / right-click interaction recorded.';
         break;
       case 'CAMERA_INTERRUPTED':
+      case 'CAMERA_INTERRUPTION':
         severity = 'HIGH';
         description = 'Webcam video stream connection was lost or interrupted.';
         break;
       case 'FACE_NOT_DETECTED':
         severity = 'WARNING';
-        description = 'Candidate face was temporarily not detected in the camera frame.';
+        description = durationSeconds
+          ? `Candidate face was temporarily not detected in the camera frame for ${durationSeconds.toFixed(1)} seconds.`
+          : 'Candidate face was temporarily not detected in the camera frame.';
+        break;
+      case 'MULTIPLE_FACES_DETECTED':
+        severity = 'HIGH';
+        description = metadata?.faceCount
+          ? `Multiple faces detected in camera frame (${metadata.faceCount} faces visible).`
+          : 'Multiple faces detected in camera frame.';
+        break;
+      case 'HUMAN_SPEECH_DETECTED':
+        severity = 'WARNING';
+        const speechSec = durationSeconds || (durationMs ? durationMs / 1000 : (metadata?.speechDurationMs ? metadata.speechDurationMs / 1000 : 0));
+        description = speechSec > 0
+          ? `Human speech detected during assessment (${speechSec.toFixed(1)}s duration).`
+          : 'Human speech detected during assessment.';
         break;
       case 'MICROPHONE_INTERRUPTED':
+      case 'MICROPHONE_INTERRUPTION':
         severity = 'WARNING';
         description = 'Audio input device connection was temporarily interrupted.';
         break;
@@ -84,10 +105,14 @@ export class ProctoringService {
       candidateId,
       eventType,
       metadata: metadata || {},
-      durationSeconds: durationSeconds || 0,
+      durationSeconds: durationSeconds || (durationMs ? durationMs / 1000 : 0),
+      durationMs: durationMs || (durationSeconds ? durationSeconds * 1000 : 0),
+      startedAt: startedAt,
+      endedAt: endedAt,
+      evidenceSnapshot: evidenceSnapshot,
       severity,
       description,
-      timestamp: new Date(),
+      timestamp: startedAt || new Date(),
     });
 
     return event;
@@ -134,9 +159,13 @@ export class ProctoringService {
       total: events.length,
       tabSwitches: events.filter((e) => e.eventType === 'TAB_SWITCH' || e.eventType === 'WINDOW_BLUR').length,
       fullscreenExits: events.filter((e) => e.eventType === 'FULLSCREEN_EXIT').length,
-      cameraInterruptions: events.filter((e) => e.eventType === 'CAMERA_INTERRUPTED').length,
+      cameraInterruptions: events.filter((e) => e.eventType === 'CAMERA_INTERRUPTED' || e.eventType === 'CAMERA_INTERRUPTION').length,
       copyPasteAttempts: events.filter((e) => ['COPY_ATTEMPT', 'PASTE_ATTEMPT', 'CUT_ATTEMPT'].includes(e.eventType)).length,
       rightClicks: events.filter((e) => e.eventType === 'RIGHT_CLICK').length,
+      multipleFaces: events.filter((e) => e.eventType === 'MULTIPLE_FACES_DETECTED').length,
+      faceNotDetected: events.filter((e) => e.eventType === 'FACE_NOT_DETECTED').length,
+      humanSpeech: events.filter((e) => e.eventType === 'HUMAN_SPEECH_DETECTED').length,
+      microphoneInterruptions: events.filter((e) => e.eventType === 'MICROPHONE_INTERRUPTED' || e.eventType === 'MICROPHONE_INTERRUPTION').length,
     };
 
     return {
@@ -148,7 +177,12 @@ export class ProctoringService {
         severity: e.severity,
         description: e.description,
         timestamp: e.timestamp,
+        startedAt: (e as any).startedAt,
+        endedAt: (e as any).endedAt,
         durationSeconds: e.durationSeconds,
+        durationMs: (e as any).durationMs,
+        metadata: e.metadata,
+        evidenceSnapshot: (e as any).evidenceSnapshot,
       })),
       snapshots: snapshots.map((s) => ({
         id: s._id,

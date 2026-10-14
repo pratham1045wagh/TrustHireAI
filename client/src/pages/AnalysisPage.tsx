@@ -82,7 +82,7 @@ export const AnalysisPage: React.FC = () => {
     );
   }
 
-  const { personalInfo, summary, skills, education, experience, projects, certifications } =
+  const { personalInfo, summary, aiExecutiveSummary, skills, education, experience, projects, certifications } =
     normalizeResumeData(resume.analysis);
 
   return (
@@ -203,80 +203,97 @@ export const AnalysisPage: React.FC = () => {
       </div>
 
       {/* Personal Information & Summary */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         {/* Contact Metadata Card */}
-        <div className="lg:col-span-4 bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-4">
-          <h3 className="text-base font-bold text-slate-900 flex items-center gap-2 pb-3 border-b border-slate-100">
-            <User className="w-4 h-4 text-ai-600" />
-            <span>Personal Information</span>
-          </h3>
+        <div className="lg:col-span-4 bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-4 flex flex-col justify-between">
+          <div className="space-y-4">
+            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2 pb-3 border-b border-slate-100">
+              <User className="w-4 h-4 text-ai-600" />
+              <span>Personal Information</span>
+            </h3>
 
-          <div className="space-y-3 text-xs">
-            <div>
-              <span className="text-slate-400 block mb-0.5">Candidate Name</span>
-              <span className="font-bold text-slate-900 text-sm">
-                {personalInfo?.fullName || 'Not detected'}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2 text-slate-600">
-              <Mail className="w-4 h-4 text-slate-400 shrink-0" />
-              <span className="truncate">{personalInfo?.email || 'Not detected'}</span>
-            </div>
-
-            <div className="flex items-center gap-2 text-slate-600">
-              <Phone className="w-4 h-4 text-slate-400 shrink-0" />
-              <span>{personalInfo?.phone || 'Not detected'}</span>
-            </div>
-
-            <div className="flex items-center gap-2 text-slate-600">
-              <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
-              <span>{personalInfo?.location || 'Not detected'}</span>
-            </div>
-
-            {personalInfo?.linkedin && (
-              <div className="flex items-center gap-2 text-ai-600">
-                <Linkedin className="w-4 h-4 shrink-0" />
-                <a href={personalInfo.linkedin} target="_blank" rel="noreferrer" className="underline truncate">
-                  LinkedIn Profile
-                </a>
+            <div className="space-y-3 text-xs">
+              <div>
+                <span className="text-slate-400 block mb-0.5">Candidate Name</span>
+                <span className="font-bold text-slate-900 text-sm">
+                  {personalInfo?.fullName || 'Not specified'}
+                </span>
               </div>
-            )}
 
-            {personalInfo?.github && (
-              <div className="flex items-center gap-2 text-slate-800">
-                <Github className="w-4 h-4 shrink-0" />
-                <a href={personalInfo.github} target="_blank" rel="noreferrer" className="underline truncate">
-                  GitHub Repository
-                </a>
+              <div className="flex items-center gap-2 text-slate-600">
+                <Mail className="w-4 h-4 text-slate-400 shrink-0" />
+                <span className="truncate">{personalInfo?.email || 'Not specified'}</span>
               </div>
-            )}
 
-            {personalInfo?.portfolio && (
-              <div className="flex items-center gap-2 text-brand-600">
-                <Globe className="w-4 h-4 shrink-0" />
-                <a href={personalInfo.portfolio} target="_blank" rel="noreferrer" className="underline truncate">
-                  Portfolio Website
-                </a>
+              <div className="flex items-center gap-2 text-slate-600">
+                <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                <span>{personalInfo?.phone || 'Not specified'}</span>
               </div>
-            )}
+
+              <div className="flex items-center gap-2 text-slate-600">
+                <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+                <span>{personalInfo?.location || 'Not specified in header'}</span>
+              </div>
+
+              {personalInfo?.linkedin && (
+                <div className="flex items-center gap-2 text-ai-600">
+                  <Linkedin className="w-4 h-4 shrink-0" />
+                  <a href={personalInfo.linkedin} target="_blank" rel="noreferrer" className="underline truncate">
+                    LinkedIn Profile
+                  </a>
+                </div>
+              )}
+
+              {personalInfo?.github && (
+                <div className="flex items-center gap-2 text-slate-800">
+                  <Github className="w-4 h-4 shrink-0" />
+                  <a href={personalInfo.github} target="_blank" rel="noreferrer" className="underline truncate">
+                    GitHub Repository
+                  </a>
+                </div>
+              )}
+
+              {personalInfo?.portfolio && (
+                <div className="flex items-center gap-2 text-brand-600">
+                  <Globe className="w-4 h-4 shrink-0" />
+                  <a href={personalInfo.portfolio} target="_blank" rel="noreferrer" className="underline truncate">
+                    Portfolio Website
+                  </a>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* AI Summary Card */}
-        <div className="lg:col-span-8 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs flex flex-col justify-between">
+        {/* AI Executive Summary Card */}
+        <div className="lg:col-span-8 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs flex flex-col justify-between h-auto">
           <div>
-            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2 pb-3 border-b border-slate-100 mb-4">
-              <Sparkles className="w-4 h-4 text-ai-600" />
-              <span>AI Executive Summary</span>
-            </h3>
-            <p className="text-sm text-slate-600 leading-relaxed italic">
-              "{summary || 'No explicit summary section detected in resume.'}"
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-ai-600" />
+                <span>AI Executive Summary</span>
+              </h3>
+              <Badge variant="ai" size="sm">AI Generated</Badge>
+            </div>
+            
+            <p className="text-sm text-slate-700 leading-relaxed font-normal break-words whitespace-pre-line">
+              {aiExecutiveSummary || summary || 'No executive summary available.'}
             </p>
+
+            {summary && summary !== aiExecutiveSummary && (
+              <div className="mt-5 pt-4 border-t border-slate-100">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                  Original Resume Summary
+                </span>
+                <p className="text-xs text-slate-500 leading-relaxed italic break-words whitespace-pre-line">
+                  "{summary}"
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
-            <span>Extracted via Gemini AI structured JSON engine</span>
+            <span>Synthesized via Gemini AI candidate intelligence engine</span>
             <span className="font-semibold text-emerald-600">Verification Clean</span>
           </div>
         </div>
@@ -432,16 +449,21 @@ export const AnalysisPage: React.FC = () => {
             {projects.map((proj, idx) => (
               <div
                 key={idx}
-                className="p-5 rounded-2xl bg-slate-50/80 border border-slate-200/80 flex flex-col justify-between space-y-3"
+                className="p-5 rounded-2xl bg-slate-50/80 border border-slate-200/80 flex flex-col justify-between space-y-3 h-auto"
               >
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <h4 className="text-base font-extrabold text-slate-900">{proj.name}</h4>
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <h4 className="text-base font-extrabold text-slate-900 leading-snug break-words">
+                      {proj.name}
+                    </h4>
                     {proj.duration && (
-                      <span className="text-[11px] text-slate-400 font-mono">{proj.duration}</span>
+                      <span className="text-[11px] text-slate-400 font-mono shrink-0">{proj.duration}</span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-600 leading-relaxed mb-3">
+                  {proj.role && proj.role !== 'Developer' && (
+                    <span className="text-xs font-semibold text-ai-700 block mb-2">{proj.role}</span>
+                  )}
+                  <p className="text-xs text-slate-600 leading-relaxed mb-3 break-words whitespace-normal">
                     {proj.description || 'No description provided'}
                   </p>
                 </div>
@@ -471,7 +493,7 @@ export const AnalysisPage: React.FC = () => {
       {/* Experience & Education Timelines */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Work Experience Timeline */}
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6 h-auto">
           <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2 pb-3 border-b border-slate-100">
             <Briefcase className="w-5 h-5 text-ai-600" />
             <span>Work Experience</span>
@@ -483,18 +505,18 @@ export const AnalysisPage: React.FC = () => {
                 <div key={idx} className="relative">
                   <div className="absolute -left-6 top-1.5 w-3 h-3 rounded-full bg-ai-600 ring-4 ring-ai-100" />
                   <div className="space-y-1">
-                    <h4 className="text-sm font-extrabold text-slate-900">{exp.role}</h4>
-                    <p className="text-xs font-bold text-ai-700">{exp.company}</p>
+                    <h4 className="text-sm font-extrabold text-slate-900 break-words">{exp.role}</h4>
+                    <p className="text-xs font-bold text-ai-700 break-words">{exp.company}</p>
                     <p className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
+                      <Calendar className="w-3 h-3 shrink-0" />
                       <span>
-                        {exp.startDate} - {exp.endDate || 'Present'}
+                        {exp.startDate ? `${exp.startDate} - ` : ''}{exp.endDate || 'Present'}
                       </span>
                     </p>
                     {exp.description && exp.description.length > 0 && (
-                      <ul className="mt-2 text-xs text-slate-600 space-y-1 list-disc list-inside">
+                      <ul className="mt-2 text-xs text-slate-600 space-y-1.5 list-disc list-inside">
                         {exp.description.map((bullet, bIdx) => (
-                          <li key={bIdx} className="leading-relaxed">
+                          <li key={bIdx} className="leading-relaxed break-words whitespace-normal">
                             {bullet}
                           </li>
                         ))}
@@ -510,7 +532,7 @@ export const AnalysisPage: React.FC = () => {
         </div>
 
         {/* Education Timeline */}
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6 h-auto">
           <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2 pb-3 border-b border-slate-100">
             <GraduationCap className="w-5 h-5 text-ai-600" />
             <span>Education History</span>
@@ -522,10 +544,19 @@ export const AnalysisPage: React.FC = () => {
                 <div key={idx} className="relative">
                   <div className="absolute -left-6 top-1.5 w-3 h-3 rounded-full bg-brand-600 ring-4 ring-brand-100" />
                   <div className="space-y-1">
-                    <h4 className="text-sm font-extrabold text-slate-900">{edu.degree}</h4>
-                    <p className="text-xs font-bold text-slate-700">{edu.institution}</p>
-                    <p className="text-[11px] text-slate-400 font-mono">
-                      {edu.startYear} - {edu.endYear} {edu.grade ? `• Grade/CGPA: ${edu.grade}` : ''}
+                    <h4 className="text-sm font-extrabold text-slate-900 break-words">
+                      {edu.degree}{edu.field ? ` in ${edu.field}` : ''}
+                    </h4>
+                    <p className="text-xs font-bold text-slate-700 break-words">{edu.institution}</p>
+                    <p className="text-[11px] text-slate-400 font-mono break-words">
+                      {edu.startYear && edu.endYear
+                        ? `${edu.startYear} – ${edu.endYear}`
+                        : edu.endYear
+                        ? `Passing Year: ${edu.endYear}`
+                        : edu.startYear
+                        ? `Started: ${edu.startYear}`
+                        : ''}
+                      {edu.grade ? ` • Grade/CGPA: ${edu.grade}` : ''}
                     </p>
                   </div>
                 </div>

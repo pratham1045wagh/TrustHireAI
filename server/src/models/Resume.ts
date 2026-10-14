@@ -76,6 +76,8 @@ const ResumeAnalysisSchema = new Schema(
   {
     personalInfo: { type: PersonalInfoSchema, required: true },
     summary: { type: String, default: null },
+    aiExecutiveSummary: { type: String, default: null },
+    ai_executive_summary: { type: String, default: null },
     skills: { type: SkillsCategorySchema, required: true },
     education: { type: [EducationSchema], default: [] },
     experience: { type: [ExperienceSchema], default: [] },

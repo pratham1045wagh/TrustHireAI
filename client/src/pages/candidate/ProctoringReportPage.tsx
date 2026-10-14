@@ -104,8 +104,8 @@ export const ProctoringReportPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Counters Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+      {/* Counters Grid - 10 Proctoring Metrics */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs text-center">
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Events</p>
           <p className="text-2xl font-black text-slate-900 font-mono mt-1">{summary?.total || 0}</p>
@@ -127,6 +127,26 @@ export const ProctoringReportPage: React.FC = () => {
         </div>
 
         <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs text-center">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Mic Interruptions</p>
+          <p className="text-2xl font-black text-slate-700 font-mono mt-1">{summary?.microphoneInterruptions || 0}</p>
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs text-center">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Multiple Faces</p>
+          <p className="text-2xl font-black text-rose-600 font-mono mt-1">{summary?.multipleFaces || 0}</p>
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs text-center">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Face Not Detected</p>
+          <p className="text-2xl font-black text-amber-600 font-mono mt-1">{summary?.faceNotDetected || 0}</p>
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs text-center">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Human Speech</p>
+          <p className="text-2xl font-black text-ai-700 font-mono mt-1">{summary?.humanSpeech || 0}</p>
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs text-center">
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Clipboard Actions</p>
           <p className="text-2xl font-black text-slate-700 font-mono mt-1">{summary?.copyPasteAttempts || 0}</p>
         </div>
@@ -142,7 +162,7 @@ export const ProctoringReportPage: React.FC = () => {
         <div>
           <h3 className="text-lg font-extrabold text-slate-900">Recorded Events Timeline</h3>
           <p className="text-xs text-slate-500">
-            Chronological record of browser, focus, and stream interactions. Events represent objective technical signals.
+            Chronological record of browser, focus, camera, speech, and stream interactions. Events represent objective technical signals.
           </p>
         </div>
 
@@ -157,7 +177,7 @@ export const ProctoringReportPage: React.FC = () => {
                 key={item.id}
                 className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <div className="font-mono text-slate-400 font-bold flex items-center gap-1 shrink-0">
                     <Clock className="w-3.5 h-3.5" />
                     <span>{formatTimestamp(item.timestamp)}</span>
@@ -173,6 +193,18 @@ export const ProctoringReportPage: React.FC = () => {
                   </Badge>
 
                   <span className="font-medium text-slate-700">{item.description}</span>
+
+                  {item.evidenceSnapshot && (
+                    <a
+                      href={`/api/proctoring/snapshots/${item.evidenceSnapshot}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-bold hover:bg-rose-100 transition-colors"
+                    >
+                      <Camera className="w-3 h-3 text-rose-600" />
+                      <span>View Evidence Snapshot</span>
+                    </a>
+                  )}
                 </div>
 
                 {item.durationSeconds > 0 && (
@@ -189,9 +221,9 @@ export const ProctoringReportPage: React.FC = () => {
       {/* Webcam Snapshots Gallery */}
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
         <div>
-          <h3 className="text-lg font-extrabold text-slate-900">Periodic Webcam Verification Snapshots</h3>
+          <h3 className="text-lg font-extrabold text-slate-900">Webcam Verification & Evidence Snapshots</h3>
           <p className="text-xs text-slate-500">
-            Snapshots captured at periodic intervals during the proctored exam.
+            Periodic verification snapshots and event-triggered evidence snapshots captured during the proctored exam.
           </p>
         </div>
 
@@ -199,29 +231,38 @@ export const ProctoringReportPage: React.FC = () => {
           <p className="p-8 text-center text-xs text-slate-400 italic">No snapshots available for this session.</p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {snapshots.map((snap: any) => (
-              <div
-                key={snap.id}
-                className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 relative group"
-              >
-                <img
-                  src={snap.url}
-                  alt="Snapshot"
-                  className="w-full aspect-video object-cover"
-                  onError={(e: any) => {
-                    // Fallback visual placeholder if file is local temp
-                    e.target.style.display = 'none';
-                  }}
-                />
-                <div className="p-2.5 bg-slate-900/90 text-white text-[10px] flex items-center justify-between">
-                  <span className="font-mono font-bold flex items-center gap-1">
-                    <Camera className="w-3 h-3 text-ai-400" />
-                    {formatTimestamp(snap.timestamp)}
-                  </span>
-                  <span className="text-slate-400 truncate max-w-[90px]">{snap.eventContext || 'Verification'}</span>
+            {snapshots.map((snap: any) => {
+              const isEvidence = snap.eventContext && snap.eventContext.toLowerCase().includes('evidence');
+              return (
+                <div
+                  key={snap.id}
+                  className={`rounded-2xl overflow-hidden border bg-slate-900 relative group ${
+                    isEvidence ? 'border-rose-500/80 ring-2 ring-rose-500/30' : 'border-slate-200'
+                  }`}
+                >
+                  <img
+                    src={snap.url}
+                    alt="Snapshot"
+                    className="w-full aspect-video object-cover"
+                    onError={(e: any) => {
+                      e.target.style.display = 'none';
+                    }}
+                  />
+                  {isEvidence && (
+                    <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-rose-600 text-white text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-md">
+                      <span>Evidence</span>
+                    </div>
+                  )}
+                  <div className="p-2.5 bg-slate-900/90 text-white text-[10px] flex items-center justify-between">
+                    <span className="font-mono font-bold flex items-center gap-1">
+                      <Camera className="w-3 h-3 text-ai-400" />
+                      {formatTimestamp(snap.timestamp)}
+                    </span>
+                    <span className="text-slate-400 truncate max-w-[90px]">{snap.eventContext || 'Verification'}</span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

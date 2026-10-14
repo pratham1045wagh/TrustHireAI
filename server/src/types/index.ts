@@ -76,6 +76,8 @@ export interface ICertification {
 export interface IResumeAnalysis {
   personalInfo: IPersonalInfo;
   summary: string | null;
+  aiExecutiveSummary?: string | null;
+  ai_executive_summary?: string | null;
   skills: ISkillsCategory;
   education: IEducation[];
   experience: IExperience[];
@@ -247,6 +249,10 @@ export interface IAssessmentSession {
     cameraInterruptions: number;
     copyPasteAttempts: number;
     rightClicks: number;
+    multipleFaces?: number;
+    faceNotDetected?: number;
+    humanSpeech?: number;
+    microphoneInterruptions?: number;
     integrityIndicator: 'High' | 'Moderate' | 'Review Recommended';
   };
   createdAt?: Date;
@@ -263,8 +269,12 @@ export type ProctoringEventType =
   | 'CUT_ATTEMPT'
   | 'RIGHT_CLICK'
   | 'CAMERA_INTERRUPTED'
+  | 'CAMERA_INTERRUPTION'
   | 'FACE_NOT_DETECTED'
+  | 'MULTIPLE_FACES_DETECTED'
   | 'MICROPHONE_INTERRUPTED'
+  | 'MICROPHONE_INTERRUPTION'
+  | 'HUMAN_SPEECH_DETECTED'
   | 'NETWORK_DISCONNECT'
   | 'TIME_WARNING'
   | 'ASSESSMENT_TIMEOUT';
@@ -277,9 +287,13 @@ export interface IProctoringEvent {
   candidateId: string;
   eventType: ProctoringEventType;
   timestamp: Date;
+  startedAt?: Date;
+  endedAt?: Date;
+  durationMs?: number;
   durationSeconds?: number;
   metadata?: Record<string, any>;
   severity: EventSeverity;
+  evidenceSnapshot?: string;
   resolved: boolean;
   description: string;
 }

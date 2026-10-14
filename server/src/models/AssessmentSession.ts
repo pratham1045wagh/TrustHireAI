@@ -37,6 +37,10 @@ export interface IAssessmentSessionDocument extends Document {
     cameraInterruptions: number;
     copyPasteAttempts: number;
     rightClicks: number;
+    multipleFaces?: number;
+    faceNotDetected?: number;
+    humanSpeech?: number;
+    microphoneInterruptions?: number;
     integrityIndicator: 'High' | 'Moderate' | 'Review Recommended';
   };
   createdAt: Date;
@@ -203,6 +207,10 @@ const AssessmentSessionSchema = new Schema<IAssessmentSessionDocument>(
         cameraInterruptions: 0,
         copyPasteAttempts: 0,
         rightClicks: 0,
+        multipleFaces: 0,
+        faceNotDetected: 0,
+        humanSpeech: 0,
+        microphoneInterruptions: 0,
         integrityIndicator: 'High',
       },
     },
